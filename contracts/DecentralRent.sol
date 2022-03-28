@@ -7,17 +7,23 @@ pragma solidity >= 0.5.0;
 
 contract DecentralRent{
     address _owner = msg.sender;
-    // address support_team = accounts[0];
-    mapping (uint256 => car) registeredCarList;
+    uint256 platformFee;
+    address _support_team;    
+    mapping (uint256 => car) carList; 
     mapping (uint256 => rent) rentList;
     mapping (address => carOwner) carOwnerInfo; 
     mapping (address => renter) renterList;
     mapping (uint256 => uint256) offer_dates;
     mapping (uint256 => issue) issueList; 
-    uint256 carIDCount;
-    uint256 rentIDCount;
-    uint256 renterIDCount;
-    uint256 issueIDCount;
+    uint256 carIDCount = 0;
+    uint256 rentIDCount = 0;
+    uint256 renterIDCount = 0;
+    uint256 issueIDCount = 0;
+
+    constructor(uint256 fee, address supportAddress) public {
+        _support_team = supportAddress;
+        platformFee = fee;
+    }
 
     enum CarStatus {
         Registered,
@@ -43,27 +49,29 @@ contract DecentralRent{
     enum IssueStatus {
         Created,
         Solving,
-        Solved,
-        Rejected
+        Solved
     }  
 
+/***************************** STRUCTS ********************************/
     struct carOwner {
         bool verified; 
         uint256 carCount;
-        uint256[] carList;  
+        uint256[] carList;
+        uint256 carOwnerRating;  
     }
-    
+
     struct car {
         address owner;
         CarStatus carStatus;
         // (available, reserved, received, on_rent, returned, missing)
-        string car_plate; // maybe can be revealed only after the rent has been confirmed;
-        string car_model;
-        uint256 hourly_rental_rate;
+        string carPlate; // maybe can be revealed only after the rent has been confirmed;
+        string carModel;
+        uint256 hourlyRentalRate;
         uint256 deposit;
-        string available_start_date;
-        string available_end_date;
-        string collection_point;
+        uint256 carCondition; // 1-10
+        uint256 availableStartDate; // 202202102300 > 202201301000
+        uint256 availableEndDate;
+        string collectionPoint;
         uint256[] requestedRentIDList; 
         uint256[] rentHistory;
     }
@@ -71,27 +79,51 @@ contract DecentralRent{
     struct rent {
         uint256 carID;
         address renter;
+        address carOwner;
         RentalStatus rentalStatus; // (pending, approved, rejected) 
-        string start_date;
-        string end_date;
+        uint256 startDate;
+        uint256 endDate;
+        uint256 hourlyRentalRate;
+        uint256 deposit;
+        //price etc.
     }
 
     struct renter {
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
+        uint256 rating;
+        uint256 currentCar; //Car ID if renting, 0 if not
+        uint256[] rentalRequests;
     }
 
     struct issue {
         uint256 rentID;
-        string issueDesciption;
+        address reporter;
+        string details;
         string contactNumber;
         IssueStatus issueStatus;
     }
 
+/***************************** EVENTS ********************************/
+    event Notify_renter(address renter);
+    event Notify_owner(address owner);
+    
+    //car renter
+    event RenterRegistered(uint256 renterId);
+    event RentalRequestedSubmitted(uint256 renterId, uint256 carId);
+    event RentalOfferAccepted(uint256 renterId, uint256 carId);
+    event CarReceived(uint256 renterId, uint256 carId);
+    event IssueReported(address reporter, uint256 rentId);
+    event IssueResolved(uint256 issueId);
+    event IssueReopened(uint256 issueId);
+    
+
+
+/***************************** MODIFIERS ********************************/
     modifier carOwnerOnly(address person, uint256 carID) {
         // this modifier requires the caller to be the owner of this car
-        require(person == registeredCarList[carID].owner, "only verified car owner can perform this action");
+        require(person == carList[carID].owner, "only verified car owner can perform this action");
         _;
     }
 
@@ -104,7 +136,7 @@ contract DecentralRent{
     modifier requestedRenter(uint256 carID, uint256 rentID) {
         // this modifier requires only when the renter submited a rental request for this car, s/he can be approved or rejected
         bool requested = false;
-        uint256[] memory requests = registeredCarList[carID].requestedRentIDList;
+        uint256[] memory requests = carList[carID].requestedRentIDList;
         for (uint i=0; i<requests.length; i++) {
             if (requests[i] == rentID) {
                 requested = true;
@@ -123,7 +155,7 @@ contract DecentralRent{
 
     modifier carInStatus(uint256 carID, CarStatus status) {
         // this modifier requires car in specific status
-        require(registeredCarList[carID].carStatus == status, "The status of this car is not allowed for this option.");
+        require(carList[carID].carStatus == status, "The status of this car is not allowed for this option.");
         _;
     }
 
@@ -137,7 +169,7 @@ contract DecentralRent{
         return singPass;
     }
 
-    function singPassVerifyCar(address person, string memory car_model, string memory car_plate) private pure returns(bool){
+    function singPassVerifyCar(address person, string memory carModel, string memory carPlate) private pure returns(bool){
         // this function simulates the verification of car ownership and model through SingPass. 
         // Returns true by default.
         bool singPassCar = false;
@@ -156,12 +188,13 @@ contract DecentralRent{
         }
     }
 
-    function register_car(string memory car_model, string memory car_plate) public verifiedUserOnly(msg.sender) {
+    function register_car(string memory carModel, string memory carPlate) public verifiedUserOnly(msg.sender) {
         // require verification of car
-        require(singPassVerifyCar(msg.sender, car_model, car_plate) == true, "car does not pass verification"); 
+        require(singPassVerifyCar(msg.sender, carModel, carPlate) == true, "car does not pass verification"); 
         // create new car struct
         uint256[] memory requestedRentIDList;
-        registeredCarList[carIDCount] = car(msg.sender, CarStatus.Registered, car_plate, car_model, 0, 0, "", "", "", requestedRentIDList);
+        uint256[] memory rentHistory;
+        carList[carIDCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, "", "", "", requestedRentIDList, rentHistory);
         carOwnerInfo[msg.sender].carList.push(carIDCount);
         carOwnerInfo[msg.sender].carCount += 1;
         carIDCount += 1;
@@ -169,27 +202,28 @@ contract DecentralRent{
 
 
     // xinyi
-    function list_car_for_rental(uint256 carID, string memory available_start_date, string memory available_end_date, string memory collection_point, uint256 hourly_rental_rate, uint256 deposit) 
+    function list_car_for_rental(uint256 carID, uint256 availableStartDate, uint256 availableEndDate, string memory collectionPoint, uint256 hourlyRentalRate, uint256 deposit, uint256 carCondition) 
         public carOwnerOnly(msg.sender, carID) carInStatus(carID, CarStatus.Registered) {
 
         // add information to the car struct
-        registeredCarList[carID].available_start_date = available_start_date;
-        registeredCarList[carID].available_end_date = available_end_date;
-        registeredCarList[carID].collection_point = collection_point;
-        registeredCarList[carID].deposit = deposit;
-        registeredCarList[carID].hourly_rental_rate = hourly_rental_rate;
-        registeredCarList[carID].carStatus = CarStatus.Available;
+        carList[carID].availableStartDate = availableStartDate;
+        carList[carID].availableEndDate = availableEndDate;
+        carList[carID].collectionPoint = collectionPoint;
+        carList[carID].deposit = deposit;
+        carList[carID].hourlyRentalRate = hourlyRentalRate;
+        carList[carID].carCondition = carCondition;
+        carList[carID].carStatus = CarStatus.Available;
     }
 
-    function update_listed_car_info(uint256 carID, uint256 hourly_rental_rate, uint256 deposit, string memory available_start_date, string memory available_end_date, string memory collection_point) 
+    function update_listed_car_info(uint256 carID, uint256 hourlyRentalRate, uint256 deposit, uint256 availableStartDate, uint256 availableEndDate, string memory collectionPoint) 
         public carOwnerOnly(msg.sender, carID) carInStatus(carID, CarStatus.Available) {
         
         //modify information in the car struct
-        registeredCarList[carID].available_start_date = available_start_date;
-        registeredCarList[carID].available_end_date = available_end_date;
-        registeredCarList[carID].collection_point = collection_point;
-        registeredCarList[carID].deposit = deposit;
-        registeredCarList[carID].hourly_rental_rate = hourly_rental_rate;
+        carList[carID].availableStartDate = availableStartDate;
+        carList[carID].availableEndDate= availableEndDate;
+        carList[carID].collectionPoint = collectionPoint;
+        carList[carID].deposit = deposit;
+        carList[carID].hourlyRentalRate = hourlyRentalRate;
     }
 
     function approve_rental_request(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) requestedRenter(rentList[rentID].carID, rentID) {
@@ -213,7 +247,7 @@ contract DecentralRent{
 
     // yitong
     function unlist_car(uint256 carID) public carOwnerOnly(msg.sender, carID) carInStatus(carID, CarStatus.Available) {
-        registeredCarList[carID].carStatus = CarStatus.Unavailable;
+        carList[carID].carStatus = CarStatus.Unavailable;
     }
 
     function offer_pending_1day(uint256 rentID) internal view returns (bool) {
@@ -224,13 +258,13 @@ contract DecentralRent{
     function recall_approval(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) rentalInStatus(rentID, RentalStatus.Approved){
         require(offer_pending_1day(rentID), "You can only recall it after 24h since your approval.");
         //change rent request status and car status
-        registeredCarList[rentList[rentID].carID].carStatus = CarStatus.Available;
+        carList[rentList[rentID].carID].carStatus = CarStatus.Available;
         rentList[rentID].rentalStatus = RentalStatus.Cancelled;
     }
 
     function confirm_car_returned(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) {
         // change car status to returned
-        registeredCarList[rentList[rentID].carID].carStatus = CarStatus.Available;
+        carList[rentList[rentID].carID].carStatus = CarStatus.Available;
         // add rent to car's rentHistory
         // change rent status
         rentList[rentID].rentalStatus = RentalStatus.Completed;
@@ -241,7 +275,7 @@ contract DecentralRent{
         renterList[renteradd].creditScore = renterList[renteradd].completedRentCount/renterList[renteradd].totalRentCount * 100; //maximum 100 marks
         // transfer deposit back to renter
         address payable recipient = payable(renteradd);
-        uint256 dep = registeredCarList[rentList[rentID].carID].deposit;
+        uint256 dep = carList[rentList[rentID].carID].deposit;
         recipient.transfer(dep);
     }
 
@@ -262,6 +296,136 @@ contract DecentralRent{
     //support team 
     //   function resolve_issue() public {}
 
+    
+/***************************** CAR RENTER ********************************/
+//car renter -> guys 
+    function register_car_renter(address renter_address) private returns (uint256) {
+        uint256[] memory rentalRequests;
+        renter memory newRenter = renter(
+            renter_address,
+            0,
+            0,
+            rentalRequests
+        );
+
+        uint256 newRenterId = numRenters++;
+        renters[newRenterId] = newRenter;
+        
+        emit RenterRegistered(newRenterId);
+        return newRenterId;
+    }
+    
+    function submit_rental_request(uint256 renterId , uint256 carId) public{
+        /**
+        car renters can submit multiple rental requests
+
+        rental request must have a way of expiring -> should include the start and end date of
+        car rental, after rental offer accepted, only other requests with overlapping dates should expire
+
+        this logic can be handled in decentralrent smart contract, rental requests can be modelled as a struct
+        */
+        //require(car to be listed)
+        require(renters[renterId].renter_address != address(0));
+        
+        renter memory currentRenter = renters[renterId]; 
+        
+        uint256[] memory oldRequests = currentRenter.rentalRequests;
+        uint256 newRequestSize = oldRequests.length + 1;
+        uint256[] memory newRequests = new uint256[](newRequestSize);
+        for(uint i = 0; i < oldRequests.length; i++) {
+            newRequests[i] = oldRequests[i];   
+        }
+        newRequests[oldRequests.length] = carId;
+        
+        currentRenter.rentalRequests = newRequests;
+
+        // currentRenter.rentalRequests.push(carId);
+        
+        emit RentalRequestedSubmitted(renterId,carId);
+        emit Notify_owner(cars[carId].owner);
+    }
+    
+    function accept_rental_offer(uint256 rentId) public {
+        rent memory rentInstance = rents[rentId];
+        require(rentInstance.renter == msg.sender, "This offer does not belong to you");
+        require(rentInstance.approved, "Offer not approved yet by car owner");
+
+        rentInstance.accepted = true;        
+
+        emit RentalOfferAccepted(rentId, rentInstance.carId);
+        emit Notify_owner(rentInstance.carOwner);
+    }
+    
+    function confirm_car_received(uint256 renterId, uint256 rentId) public {
+        require(renters[renterId].renter_address == rents[rentId].renter);
+        require(renters[renterId].renter_address == msg.sender);
+
+        renter memory currentRenter = renters[renterId];
+        
+        currentRenter.rentalRequests = uint256[]; //clear all other existing rental requests
+
+        currentRenter.currentCar = rents[rentId].carId;
+        
+        emit CarReceived(renterId, rentId);
+    }
+    
+
+//support team 
+
+    // common for both
+    function report_issues(string memory details, uint256 rentId) public {
+        //CHECK IF OWNER OR RENTER
+        rent memory currentRent = rents[rentId];
+        address car_owner = currentRent.carOwner;
+        address car_renter = currentRent.renter;
+
+        require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
+        issue memory newIssue = issue(
+            rentId,
+            details,
+            msg.sender,
+            issueState.created
+        );
+        uint256 newIssueId = numIssues++;
+        issues[newIssueId] = newIssue;
+
+        emit IssueReported(msg.sender, rentId);
+        emit Notify_owner(currentRent.carOwner);
+        emit Notify_renter(currentRent.renter); 
+    }
+
+    function resolve_issue(uint256 issueId) public {
+        require(msg.sender == _support_team);
+        issue = issues[issueId];
+        issue.state = issueState.resolved;
+
+        rent memory currentRent = rents[issue.rentId];
+        emit Notify_owner(currentRent.carOwner);
+        emit Notify_renter(currentRent.renter); 
+        emit IssueResolved(issueId);
+    }
+
+    function reopen_issue(uint256 issueId) public {
+        // could be renter or owner?
+        uint256 rentId = issues[issueId].rentId;
+        rent memory currentRent = rents[rentId];
+        address car_owner = currentRent.carOwner;
+        address car_renter = currentRent.renter;
+
+        require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
+
+        issues[issueId].state = issueState.created;
+
+        // events
+        emit IssueReopened(issueId);
+        emit Notify_owner(currentRent.carOwner);
+        emit Notify_renter(currentRent.renter); 
+    }
+}
+
+
+
+
     // getters
     function get_car_count(address owner) public view returns(uint256) {
         return carOwnerInfo[owner].carCount;
@@ -272,47 +436,47 @@ contract DecentralRent{
     }
 
     function get_car_hourly_rental(uint256 carID) public view returns(uint256) {
-        return registeredCarList[carID].hourly_rental_rate;
+        return carList[carID].hourlyRentalRate;
     }
 
     function get_car_model(uint256 carID) public view returns(string memory) {
-        return registeredCarList[carID].car_model;
+        return carList[carID].carModel;
     }
 
     function get_car_deposit(uint256 carID) public view returns(uint256) {
-        return registeredCarList[carID].deposit;
+        return carList[carID].deposit;
     }
 
     function get_car_owner(uint256 carID) public view returns(address) {
-        return registeredCarList[carID].owner;
+        return carList[carID].owner;
     }
 
     function get_car_available_start_date(uint256 carID) public view returns(string memory) {
-        return registeredCarList[carID].available_start_date;
+        return carList[carID].availableStartDate;
     }
 
     function get_car_available_end_date(uint256 carID) public view returns(string memory) {
-        return registeredCarList[carID].available_end_date;
+        return carList[carID].availableEndDate;
     }
 
     function get_car_requested_rent_IDs(uint256 carID) public view returns(uint256[] memory) {
-        return registeredCarList[carID].requestedRentIDList;
+        return carList[carID].requestedRentIDList;
     }
 
     function get_car_collection_point(uint256 carID) public view returns(string memory) {
-        return registeredCarList[carID].collection_point;
+        return carList[carID].collectionPoint;
     }
 
     function get_car_status(uint256 carID) public view returns(CarStatus) {
-        return registeredCarList[carID].carStatus;
+        return carList[carID].carStatus;
     }
 
     function get_rent_start_date(uint256 rentID) public view returns(string memory) {
-        return rentList[rentID].start_date;
+        return rentList[rentID].startDate;
     }
 
     function get_rent_end_date(uint256 rentID) public view returns(string memory) {
-        return rentList[rentID].end_date;
+        return rentList[rentID].endDate;
     }
 
     function get_rent_carID(uint256 rentID) public view returns(uint256) {
