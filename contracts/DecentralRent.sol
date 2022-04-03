@@ -57,7 +57,8 @@ contract DecentralRent{
         bool verified; 
         uint256 carCount;
         uint256[] carList;
-        uint256 carOwnerRating;  
+        uint256 completedRentCount;
+        uint256 cumulativeRating;
     }
 
     struct car {
@@ -83,18 +84,17 @@ contract DecentralRent{
         RentalStatus rentalStatus; // (pending, approved, rejected) 
         uint256 startDate;
         uint256 endDate;
-        uint256 hourlyRentalRate;
-        uint256 deposit;
-        //price etc.
+        uint256 hourlyRentalRate; // Named offeredRate at submit_rental_requests, updates throughout nego
+        uint256 deposit; // is fixed, no nego.
     }
 
     struct renter {
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
-        uint256 rating;
+        uint256 cumulativeRating;
         uint256 currentCar; //Car ID if renting, 0 if not
-        uint256[] rentalRequests;
+        uint256[] rentalRequests; //Rent IDs
     }
 
     struct issue {
@@ -111,7 +111,7 @@ contract DecentralRent{
     
     //car renter
     event RenterRegistered(uint256 renterId);
-    event RentalRequestedSubmitted(uint256 renterId, uint256 carId);
+    event RentalRequestedSubmitted(uint256 renterId, uint256 rentId);
     event RentalOfferAccepted(uint256 renterId, uint256 carId);
     event CarReceived(uint256 renterId, uint256 carId);
     event IssueReported(address reporter, uint256 rentId);
@@ -182,6 +182,7 @@ contract DecentralRent{
 //car owner 
     // xb
     function register_car_owner() public {
+        // never use carOwner struct to register?
         require(carOwnerInfo[msg.sender].verified == false, "car owner has already been registered");
         if(singPassVerify(msg.sender)) {
             carOwnerInfo[msg.sender].verified = true;
@@ -308,14 +309,21 @@ contract DecentralRent{
             rentalRequests
         );
 
-        uint256 newRenterId = numRenters++;
-        renters[newRenterId] = newRenter;
+        uint256 newRenterId = renterIDCount++;
+        renterList[newRenterId] = newRenter;
         
         emit RenterRegistered(newRenterId);
         return newRenterId;
     }
     
-    function submit_rental_request(uint256 renterId , uint256 carId) public{
+    // for the renter to quickly make rent request using LISTING PRICE
+    function submit_rental_request(uint256 renterId , uint256 carId, uint256 startDate,uint256 endDate) public returns (uint256) {
+        submit_rental_request(renterId, carId, startDate, endDate, carList[carId].hourlyRentalRate);
+    }
+
+
+    // if renter wants to offer a different price from listing
+    function submit_rental_request(uint256 renterId , uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public returns (uint256) {
         /**
         car renters can submit multiple rental requests
 
@@ -329,20 +337,39 @@ contract DecentralRent{
         
         renter memory currentRenter = renters[renterId]; 
         
+        // make a new list of requests to append our new rentID in
         uint256[] memory oldRequests = currentRenter.rentalRequests;
         uint256 newRequestSize = oldRequests.length + 1;
         uint256[] memory newRequests = new uint256[](newRequestSize);
         for(uint i = 0; i < oldRequests.length; i++) {
             newRequests[i] = oldRequests[i];   
         }
-        newRequests[oldRequests.length] = carId;
-        
-        currentRenter.rentalRequests = newRequests;
-
         // currentRenter.rentalRequests.push(carId);
+
+        // create a new rent ID to put into renter struct
+        uint256 newRentId = rentIDCount++;
+        rentList[newRentId] = rentIDCount;
+        newRequests[oldRequests.length] = newRentId;
+        currentRenter.rentalRequests = newRequests;
         
-        emit RentalRequestedSubmitted(renterId,carId);
+        // creating our new rent struct and put into rentList
+        rent memory newRentInstance = rent {
+            carId,
+            renterList[renterId],
+            carList[carId].owner,
+            RentalStatus.Pending; // (pending, approved, rejected) 
+            startDate,
+            endDate,
+            offeredRate,
+            carList[carId].deposit
+        };
+        rentList[newRentId] = newRentInstance;
+
+        
+        emit RentalRequestedSubmitted(renterId,newRentId);
         emit Notify_owner(cars[carId].owner);
+
+        return newRentId;
     }
     
     function accept_rental_offer(uint256 rentId) public {
@@ -354,6 +381,9 @@ contract DecentralRent{
 
         emit RentalOfferAccepted(rentId, rentInstance.carId);
         emit Notify_owner(rentInstance.carOwner);
+
+        // TRANSFER RENTAL PRICE + DEPOSIT FROM RENTER TO THIS CONTRACT
+
     }
     
     function confirm_car_received(uint256 renterId, uint256 rentId) public {
@@ -367,8 +397,16 @@ contract DecentralRent{
         currentRenter.currentCar = rents[rentId].carId;
         
         emit CarReceived(renterId, rentId);
+        
+        // TRANSFER THE RENTAL PRICE TO OWNER
     }
     
+/***************************** COMMON FUNCTIONS ********************************/
+    function leaveRating(uint256 rentId, uint8 rating) public {
+        // check rating 0-5
+        // update the rent struct
+        // update the owner / renter struct value 
+    } 
 
 //support team 
 
@@ -427,6 +465,14 @@ contract DecentralRent{
 
 
     // getters
+    function get_owner_rating(address owner) public view returns (uint256) {
+        return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
+    }
+
+    function get_renter_rating(address renter) public view returns (uint256) {
+        return renterList[renter].cumulativeRating / renterList[renter].completedRentCount;
+    }
+
     function get_car_count(address owner) public view returns(uint256) {
         return carOwnerInfo[owner].carCount;
     }
