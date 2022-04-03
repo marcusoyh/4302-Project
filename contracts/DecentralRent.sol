@@ -89,6 +89,7 @@ contract DecentralRent{
     }
 
     struct renter {
+        address renter_address;
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
@@ -328,36 +329,39 @@ contract DecentralRent{
         this logic can be handled in decentralrent smart contract, rental requests can be modelled as a struct
         */
         //require(car to be listed)
-        require(renters[renterId].renter_address != address(0));
-        
+        require(renterList[renterId].renter_address != address(0));
         renter memory currentRenter = renters[renterId]; 
-        
+
         // make a new list of requests to append our new rentID in
-        uint256[] memory oldRequests = currentRenter.rentalRequests;
-        uint256 newRequestSize = oldRequests.length + 1;
-        uint256[] memory newRequests = new uint256[](newRequestSize);
-        for(uint i = 0; i < oldRequests.length; i++) {
-            newRequests[i] = oldRequests[i];   
-        }
+        //uint256[] memory oldRequests = currentRenter.rentalRequests;
+        //uint256 newRequestSize = oldRequests.length + 1;
+        //uint256[] memory newRequests = new uint256[](newRequestSize);
+        //for(uint i = 0; i < oldRequests.length; i++) {
+        //    newRequests[i] = oldRequests[i];   
+        //}
         // currentRenter.rentalRequests.push(carId);
 
+
         // create a new rent ID to put into renter struct
+        
+        //rentList[newRentId] = rentIDCount;
+        //newRequests[oldRequests.length] = newRentId;
+        //currentRenter.rentalRequests = newRequests;
+        
         uint256 newRentId = rentIDCount++;
-        rentList[newRentId] = rentIDCount;
-        newRequests[oldRequests.length] = newRentId;
-        currentRenter.rentalRequests = newRequests;
+        currentRenter.rentalRequests.push(newRentId);
         
         // creating our new rent struct and put into rentList
-        rent memory newRentInstance = rent {
+        rent memory newRentInstance = rent(
             carId,
-            renterList[renterId],
+            renterList[renterId].renter_address,
             carList[carId].owner,
-            RentalStatus.Pending; // (pending, approved, rejected) 
+            RentalStatus.Pending, // (pending, approved, rejected) 
             startDate,
             endDate,
             offeredRate,
             carList[carId].deposit
-        };
+        );
         rentList[newRentId] = newRentInstance;
 
         
@@ -372,7 +376,9 @@ contract DecentralRent{
         require(rentInstance.renter == msg.sender, "This offer does not belong to you");
         require(rentInstance.approved, "Offer not approved yet by car owner");
 
-        rentInstance.accepted = true;        
+        rentInstance.accepted = true;
+
+        delete renterList[rentList[rentId].renter].rentalRequests;   //need to check if this works -- work around is each renter can only requests for max three requests at a time, array initialized at fix size of 0,3   
 
         emit RentalOfferAccepted(rentId, rentInstance.carId);
         emit Notify_owner(rentInstance.carOwner);
@@ -383,7 +389,6 @@ contract DecentralRent{
 
     function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentID].carID, CarStatus.Available) rentalInStatus(rentID, RentalStatus.Pending) {
         require(msg.sender == rentList[rentID].renter, "You are not the owner of this rental request.");
-
         rentList[rentID].startDate = startDate;
         rentList[rentID].endDate = endDate;
         rentList[rentID].hourlyRentalRate = offeredRate;
