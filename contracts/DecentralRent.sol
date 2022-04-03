@@ -278,6 +278,10 @@ contract DecentralRent{
         address payable recipient = payable(renteradd);
         uint256 dep = carList[rentList[rentID].carID].deposit;
         recipient.transfer(dep);
+
+        // update car owner completedRentCount also
+        address owneradd = rentList[rentID].carOwner;
+        carOwnerInfo[owneradd].completedRentCount ++;
     }
 
     function report_issue(uint256 rentID, string memory desc, string memory contact) public rentalInStatus(rentID, RentalStatus.Ongoing) {
@@ -353,7 +357,7 @@ contract DecentralRent{
         currentRenter.rentalRequests = newRequests;
         
         // creating our new rent struct and put into rentList
-        rent memory newRentInstance = rent {
+        rent memory newRentInstance = rent (
             carId,
             renterList[renterId],
             carList[carId].owner,
@@ -362,7 +366,7 @@ contract DecentralRent{
             endDate,
             offeredRate,
             carList[carId].deposit
-        };
+        );
         rentList[newRentId] = newRentInstance;
 
         
@@ -372,18 +376,27 @@ contract DecentralRent{
         return newRentId;
     }
     
-    function accept_rental_offer(uint256 rentId) public {
+    function accept_rental_offer(uint256 rentId) public payable {
         rent memory rentInstance = rents[rentId];
         require(rentInstance.renter == msg.sender, "This offer does not belong to you");
         require(rentInstance.approved, "Offer not approved yet by car owner");
+
+        // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
+        // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
+        uint256 hoursElapsed = 3; //hardcoded first
+        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
+        require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
 
         rentInstance.accepted = true;        
 
         emit RentalOfferAccepted(rentId, rentInstance.carId);
         emit Notify_owner(rentInstance.carOwner);
 
-        // TRANSFER RENTAL PRICE + DEPOSIT FROM RENTER TO THIS CONTRACT
-
+        if (msg.value > ethToPay) {
+            // transfer back remaining Eth
+            address payable recipient = payable(msg.sender);
+            recipient.transfer(msg.value - ethToPay);
+        }
     }
     
     function confirm_car_received(uint256 renterId, uint256 rentId) public {
@@ -399,13 +412,23 @@ contract DecentralRent{
         emit CarReceived(renterId, rentId);
         
         // TRANSFER THE RENTAL PRICE TO OWNER
+        rent memory rentInstance = rentList[rentId];
+        address payable recipient = payable(rentInstance.carOwner);
+        uint256 hoursElapsed = 3; //hardcoded first
+        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed;
+        recipient.transfer(ethToPay);
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
     function leaveRating(uint256 rentId, uint8 rating) public {
-        // check rating 0-5
-        // update the rent struct
-        // update the owner / renter struct value 
+        require(rating <= 5 && rating >=0, "Rating has to be between 0 and 5!");
+        rent rentInstance = rentList[rentId];
+        require(rentInstance.rentalStatus == RentalStatus.Completed, "Rental not completed!");
+
+        address carOwnerAddress = rentInstance.carOwner;
+        address renterAddress = rentInstance.renter;
+        carOwnerInfo[carOwnerAddress].cumulativeRating += rating;
+        renterList[renterAddress].cumulativeRating += rating;
     } 
 
 //support team 
@@ -464,7 +487,7 @@ contract DecentralRent{
 
 
 
-    // getters
+/***************************** GETTERS ********************************/
     function get_owner_rating(address owner) public view returns (uint256) {
         return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
     }
