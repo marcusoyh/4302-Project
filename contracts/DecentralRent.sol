@@ -30,7 +30,6 @@ contract DecentralRent{
         Available,
         Reserved,
         Received,
-        Returned,
         Unavailable,
         Abnormal
     }
@@ -58,7 +57,8 @@ contract DecentralRent{
         uint256 carCount;
         uint256[] carList;
         uint256 completedRentCount;
-        uint256 cumulativeRating;
+        uint8 rating;
+        uint256 ratingCount;
     }
 
     struct car {
@@ -92,7 +92,8 @@ contract DecentralRent{
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
-        uint256 cumulativeRating;
+        uint8 rating;
+        uint256 ratingCount;
         uint256 currentCar; //Car ID if renting, 0 if not
         uint256[] rentalRequests; //Rent IDs
     }
@@ -108,17 +109,21 @@ contract DecentralRent{
 /***************************** EVENTS ********************************/
     event Notify_renter(address renter);
     event Notify_owner(address owner);
+
+    //car owner
+    event OfferRecalled(uint256 rentId);
+    event CarReturned(uint256 carId);
+    event CarUnlisted(uint256 carId);
     
     //car renter
     event RenterRegistered(uint256 renterId);
     event RentalRequestedSubmitted(uint256 renterId, uint256 rentId);
+    event RentRequestUpdated(uint256 rentId);
     event RentalOfferAccepted(uint256 renterId, uint256 carId);
     event CarReceived(uint256 renterId, uint256 carId);
     event IssueReported(address reporter, uint256 rentId);
     event IssueResolved(uint256 issueId);
     event IssueReopened(uint256 issueId);
-    
-
 
 /***************************** MODIFIERS ********************************/
     modifier carOwnerOnly(address person, uint256 carID) {
@@ -249,6 +254,8 @@ contract DecentralRent{
     // yitong
     function unlist_car(uint256 carID) public carOwnerOnly(msg.sender, carID) carInStatus(carID, CarStatus.Available) {
         carList[carID].carStatus = CarStatus.Unavailable;
+
+        emit CarUnlisted(carID);
     }
 
     function offer_pending_1day(uint256 rentID) internal view returns (bool) {
@@ -261,12 +268,15 @@ contract DecentralRent{
         //change rent request status and car status
         carList[rentList[rentID].carID].carStatus = CarStatus.Available;
         rentList[rentID].rentalStatus = RentalStatus.Cancelled;
+
+        emit OfferRecalled(rentID);
     }
 
     function confirm_car_returned(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) {
         // change car status to returned
         carList[rentList[rentID].carID].carStatus = CarStatus.Available;
         // add rent to car's rentHistory
+        carList[rentList[rentID].carID].rentHistory.push(rentID);
         // change rent status
         rentList[rentID].rentalStatus = RentalStatus.Completed;
         // update renter score 
@@ -278,24 +288,9 @@ contract DecentralRent{
         address payable recipient = payable(renteradd);
         uint256 dep = carList[rentList[rentID].carID].deposit;
         recipient.transfer(dep);
+
+        emit CarReturned(rentList[rentID].carID);
     }
-
-    function report_issue(uint256 rentID, string memory desc, string memory contact) public rentalInStatus(rentID, RentalStatus.Ongoing) {
-        issueList[issueIDCount] = issue(rentID, desc, contact, IssueStatus.Created);
-        issueIDCount += 1;
-    }
-
-
-    //car renter 
-    //    function register_car_renter() private {}
-    //    function submit_rental_request() public {}
-    function update_rental_request(uint256 rentID) public rentalInStatus(rentID, RentalStatus.Pending) {}
-    //    function accept_rental_offer() public {}
-    //    function confirm_car_received() public {}
-    //    function report_issues() public {}
-
-    //support team 
-    //   function resolve_issue() public {}
 
     
 /***************************** CAR RENTER ********************************/
@@ -385,6 +380,17 @@ contract DecentralRent{
         // TRANSFER RENTAL PRICE + DEPOSIT FROM RENTER TO THIS CONTRACT
 
     }
+
+    function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentID].carID, CarStatus.Available) rentalInStatus(rentID, RentalStatus.Pending) {
+        require(msg.sender == rentList[rentID].renter, "You are not the owner of this rental request.");
+
+        rentList[rentID].startDate = startDate;
+        rentList[rentID].endDate = endDate;
+        rentList[rentID].hourlyRentalRate = offeredRate;
+        rentList[rentID].deposit = deposit;
+
+        emit RentRequestUpdated(rentId);
+    }
     
     function confirm_car_received(uint256 renterId, uint256 rentId) public {
         require(renters[renterId].renter_address == rents[rentId].renter);
@@ -402,30 +408,35 @@ contract DecentralRent{
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
-    function leaveRating(uint256 rentId, uint8 rating) public {
-        // check rating 0-5
-        // update the rent struct
+    function leaveRating(uint256 rentId, uint8 rating) public rentalInStatus(rentID, RentalStatus.Completed){
+        require(msg.sender == rentList[rentID].renter || msg.sender == rentList[rentID].carOwner, "You are not involved in this rental.");
         // update the owner / renter struct value 
+        if (msg.sender == rentList[rentID].renter) {
+            uint256 ratedId = rentList[rentID].carOwner;
+            carOwnerInfo[ratedId].ratingCount++;
+            carOwnerInfo[ratedId].rating = (carOwnerInfo[ratedId].rating + rating)/ratingCount;
+        }
+
+        if (msg.sender == rentList[rentID].carOwner) {
+            uint256 ratedId = rentList[rentID].renter;
+            renterList[ratedId].ratingCount++;
+            renterList[ratedId].rating = (renterList[ratedId].rating + rating)/ratingCount;
+        }
     } 
 
 //support team 
 
     // common for both
-    function report_issues(string memory details, uint256 rentId) public {
+    function report_issues(uint256 rentId, string memory details, string memory contact) public rentalInStatus(rentID, RentalStatus.Ongoing) {
         //CHECK IF OWNER OR RENTER
         rent memory currentRent = rents[rentId];
         address car_owner = currentRent.carOwner;
         address car_renter = currentRent.renter;
 
         require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
-        issue memory newIssue = issue(
-            rentId,
-            details,
-            msg.sender,
-            issueState.created
-        );
-        uint256 newIssueId = numIssues++;
-        issues[newIssueId] = newIssue;
+
+        issueList[issueIDCount] = issue(rentId, msg.sender, details, contact, IssueStatus.Created);
+        issueIDCount += 1;
 
         emit IssueReported(msg.sender, rentId);
         emit Notify_owner(currentRent.carOwner);
