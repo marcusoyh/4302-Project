@@ -201,7 +201,7 @@ contract DecentralRent{
         // create new car struct
         uint256[] memory requestedRentIDList;
         uint256[] memory rentHistory;
-        carList[carIDCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, "", "", "", requestedRentIDList, rentHistory);
+        carList[carIDCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedRentIDList, rentHistory);
         carOwnerInfo[msg.sender].carList.push(carIDCount);
         carOwnerInfo[msg.sender].carCount += 1;
         carIDCount += 1;
@@ -330,7 +330,7 @@ contract DecentralRent{
         */
         //require(car to be listed)
         require(renterList[renterId].renter_address != address(0));
-        renter memory currentRenter = renters[renterId]; 
+        renter memory currentRenter = renterList[renterId]; 
 
         // make a new list of requests to append our new rentID in
         //uint256[] memory oldRequests = currentRenter.rentalRequests;
@@ -366,13 +366,13 @@ contract DecentralRent{
 
         
         emit RentalRequestedSubmitted(renterId,newRentId);
-        emit Notify_owner(cars[carId].owner);
+        emit Notify_owner(carList[carId].owner);
 
         return newRentId;
     }
     
     function accept_rental_offer(uint256 rentId) public {
-        rent memory rentInstance = rents[rentId];
+        rent memory rentInstance = rentList[rentId];
         require(rentInstance.renter == msg.sender, "This offer does not belong to you");
         require(rentInstance.approved, "Offer not approved yet by car owner");
 
@@ -387,73 +387,73 @@ contract DecentralRent{
 
     }
 
-    function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentID].carID, CarStatus.Available) rentalInStatus(rentID, RentalStatus.Pending) {
+    function update_rental_request(uint256 rentID, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentID].carID, CarStatus.Available) rentalInStatus(rentID, RentalStatus.Pending) {
         require(msg.sender == rentList[rentID].renter, "You are not the owner of this rental request.");
         rentList[rentID].startDate = startDate;
         rentList[rentID].endDate = endDate;
         rentList[rentID].hourlyRentalRate = offeredRate;
         rentList[rentID].deposit = deposit;
 
-        emit RentRequestUpdated(rentId);
+        emit RentRequestUpdated(rentID);
     }
     
-    function confirm_car_received(uint256 renterId, uint256 rentId) public {
-        require(renters[renterId].renter_address == rents[rentId].renter);
-        require(renters[renterId].renter_address == msg.sender);
+    function confirm_car_received(uint256 renterId, uint256 rentID) public {
+        require(renterList[renterId].renter_address == rentList[rentID].renter);
+        require(renterList[renterId].renter_address == msg.sender);
 
-        renter memory currentRenter = renters[renterId];
+        renter memory currentRenter = renterList[renterId];
         
         currentRenter.rentalRequests = uint256[]; //clear all other existing rental requests
 
-        currentRenter.currentCar = rents[rentId].carId;
+        currentRenter.currentCar = rentList[rentID].carId;
         
-        emit CarReceived(renterId, rentId);
+        emit CarReceived(renterId, rentID);
         
         // TRANSFER THE RENTAL PRICE TO OWNER
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
-    function leaveRating(uint256 rentId, uint8 rating) public rentalInStatus(rentID, RentalStatus.Completed){
+    function leaveRating(uint256 rentID, uint8 rating) public rentalInStatus(rentID, RentalStatus.Completed){
         require(msg.sender == rentList[rentID].renter || msg.sender == rentList[rentID].carOwner, "You are not involved in this rental.");
         // update the owner / renter struct value 
         if (msg.sender == rentList[rentID].renter) {
             uint256 ratedId = rentList[rentID].carOwner;
             carOwnerInfo[ratedId].ratingCount++;
-            carOwnerInfo[ratedId].rating = (carOwnerInfo[ratedId].rating + rating)/ratingCount;
+            carOwnerInfo[ratedId].rating = (carOwnerInfo[ratedId].rating + rating)/carOwnerInfo[ratedId].ratingCount;
         }
 
         if (msg.sender == rentList[rentID].carOwner) {
             uint256 ratedId = rentList[rentID].renter;
             renterList[ratedId].ratingCount++;
-            renterList[ratedId].rating = (renterList[ratedId].rating + rating)/ratingCount;
+            renterList[ratedId].rating = (renterList[ratedId].rating + rating)/carOwnerInfo[ratedId].ratingCount;
         }
     } 
 
 //support team 
 
     // common for both
-    function report_issues(uint256 rentId, string memory details, string memory contact) public rentalInStatus(rentID, RentalStatus.Ongoing) {
+    function report_issues(uint256 rentID, string memory details, string memory contact) public rentalInStatus(rentID, RentalStatus.Ongoing) {
         //CHECK IF OWNER OR RENTER
-        rent memory currentRent = rents[rentId];
+        rent memory currentRent = rentList[rentID];
         address car_owner = currentRent.carOwner;
         address car_renter = currentRent.renter;
 
         require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
 
-        issueList[issueIDCount] = issue(rentId, msg.sender, details, contact, IssueStatus.Created);
+        issueList[issueIDCount] = issue(rentID, msg.sender, details, contact, IssueStatus.Created);
         issueIDCount += 1;
 
-        emit IssueReported(msg.sender, rentId);
+        emit IssueReported(msg.sender, rentID);
         emit Notify_owner(currentRent.carOwner);
         emit Notify_renter(currentRent.renter); 
     }
 
     function resolve_issue(uint256 issueId) public {
         require(msg.sender == _support_team);
-        issue = issues[issueId];
-        issue.state = issueState.resolved;
+        issue = issueList[issueId];
+        issue.state = IssueStatus.Solved;
 
-        rent memory currentRent = rents[issue.rentId];
+        rent memory currentRent = rentList[issue.rentId];
         emit Notify_owner(currentRent.carOwner);
         emit Notify_renter(currentRent.renter); 
         emit IssueResolved(issueId);
@@ -461,21 +461,20 @@ contract DecentralRent{
 
     function reopen_issue(uint256 issueId) public {
         // could be renter or owner?
-        uint256 rentId = issues[issueId].rentId;
-        rent memory currentRent = rents[rentId];
+        uint256 rentId = issueList[issueId].rentId;
+        rent memory currentRent = rentList[rentId];
         address car_owner = currentRent.carOwner;
         address car_renter = currentRent.renter;
 
         require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
 
-        issues[issueId].state = issueState.created;
+        issueList[issueId].state = IssueStatus.Created;
 
         // events
         emit IssueReopened(issueId);
         emit Notify_owner(currentRent.carOwner);
         emit Notify_renter(currentRent.renter); 
     }
-}
 
 
 
