@@ -418,14 +418,14 @@ contract DecentralRent{
         // update the owner / renter struct value 
         if (msg.sender == rentList[rentID].renter) {
             uint256 ratedId = rentList[rentID].carOwner;
+            carOwnerInfo[ratedId].rating = (carOwnerInfo[ratedId].rating * carOwnerInfo[ratedId].ratingCount + rating)/(carOwnerInfo[ratedId].ratingCount + 1);
             carOwnerInfo[ratedId].ratingCount++;
-            carOwnerInfo[ratedId].rating = (carOwnerInfo[ratedId].rating + rating)/carOwnerInfo[ratedId].ratingCount;
         }
 
         if (msg.sender == rentList[rentID].carOwner) {
             uint256 ratedId = rentList[rentID].renter;
+            renterList[ratedId].rating = (renterList[ratedId].rating * renterList[ratedId].ratingCount + rating)/(carOwnerInfo[ratedId].ratingCount + 1);
             renterList[ratedId].ratingCount++;
-            renterList[ratedId].rating = (renterList[ratedId].rating + rating)/carOwnerInfo[ratedId].ratingCount;
         }
     } 
 
@@ -480,12 +480,14 @@ contract DecentralRent{
 
 
     // getters
-    function get_owner_rating(address owner) public view returns (uint256) {
-        return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
+    function get_owner_rating(address userId) public view returns (uint256) {
+        // return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
+        return carOwnerInfo[userId].rating;
     }
 
-    function get_renter_rating(address renter) public view returns (uint256) {
-        return renterList[renter].cumulativeRating / renterList[renter].completedRentCount;
+    function get_renter_rating(address userId) public view returns (uint256) {
+        // return renterList[renter].cumulativeRating / renterList[renter].completedRentCount;
+        return renterList[userId].rating;
     }
 
     function get_car_count(address owner) public view returns(uint256) {
