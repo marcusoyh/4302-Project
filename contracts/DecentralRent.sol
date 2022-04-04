@@ -153,6 +153,28 @@ contract DecentralRent{
         _;
     }
 
+    modifier canApprove(uint256 rentID) {
+        // this modifier requires the owner to be able to approve only if he has not approved a rent in the same period
+        bool approve = true;
+        for (uint i=0; i<carList[rentList[rentID].carID].requestedRentIDList.length; i++) {
+           if (rentList[carList[rentList[rentID].carID].requestedRentIDList[i]].rentalStatus == RentalStatus.Approved) {
+                if (rentList[carList[rentList[rentID].carID].requestedRentIDList[i]].startDate >= rentList[rentID].startDate) {
+                    if (rentList[carList[rentList[rentID].carID].requestedRentIDList[i]].startDate <= rentList[rentID].endDate) {
+                        approve = false;
+                    } else if (rentList[carList[rentList[rentID].carID].requestedRentIDList[i]].endDate <= rentList[rentID].endDate) {
+                        approve = false;
+                    }
+                } else {
+                    if (rentList[carList[rentList[rentID].carID].requestedRentIDList[i]].endDate <= rentList[rentID].endDate) {
+                        approve = false;
+                    }
+                }         
+           }     
+        }
+        require(approve == true, "you have already approved for this time period");
+        _;
+    }
+
     modifier rentalInStatus(uint256 rentID, RentalStatus status) {
         // this modifier requires rental in specific status
         require(rentList[rentID].rentalStatus == status, "The status of this rental request is not allowed for this option.");
@@ -233,7 +255,7 @@ contract DecentralRent{
         carList[carID].hourlyRentalRate = hourlyRentalRate;
     }
 
-    function approve_rental_request(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) requestedRenter(rentList[rentID].carID, rentID) {
+    function approve_rental_request(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) requestedRenter(rentList[rentID].carID, rentID) canApprove(rentID){
         // change the request status of the rent contract to be approved 
         rentList[rentID].rentalStatus = RentalStatus.Approved;
         offer_dates[rentID] = block.timestamp;
