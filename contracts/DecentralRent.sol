@@ -91,7 +91,7 @@ contract DecentralRent{
     }
 
     struct renter {
-        address renter_address;
+        bool verified;
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
@@ -119,8 +119,8 @@ contract DecentralRent{
     event CarUnlisted(uint256 carId);
     
     //car renter
-    event RenterRegistered(uint256 renterId);
-    event RentalRequestedSubmitted(uint256 renterId, uint256 rentId);
+    event RenterRegistered(address renter_address);
+    event RentalRequestedSubmitted(address renter_address, uint256 rentId);
     event RentRequestUpdated(uint256 rentId);
     event RentalOfferAccepted(uint256 renterId, uint256 carId);
     event CarReceived(uint256 renterId, uint256 carId);
@@ -353,30 +353,44 @@ contract DecentralRent{
     
 /***************************** CAR RENTER ********************************/
 //car renter -> guys 
-    function register_car_renter(address renter_address) private returns (uint256) {
+    function register_car_renter(address renter_address) public {
+        require(singPassVerify(renter_address));
+        require(renterList[renter_address].verified == false, "car renter has already been registered");
         uint256[] memory rentalRequests;
         renter memory newRenter = renter(
-            renter_address,
+            true,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             rentalRequests
         );
 
-        uint256 newRenterId = renterIDCount++;
-        renterList[newRenterId] = newRenter;
         
-        emit RenterRegistered(newRenterId);
-        return newRenterId;
+        emit RenterRegistered(renter_address);
     }
+
+    // struct renter {
+    //     address renter_address;
+    //     uint256 completedRentCount;
+    //     uint256 totalRentCount; 
+    //     uint256 creditScore;
+    //     uint8 rating;
+    //     uint256 ratingCount;
+    //     uint256 currentCar; //Car ID if renting, 0 if not
+    //     uint256[] rentalRequests; //Rent IDs
+    // }
     
     // for the renter to quickly make rent request using LISTING PRICE
-    function submit_rental_request(uint256 renterId , uint256 carId, uint256 startDate,uint256 endDate) public returns (uint256) {
-        submit_rental_request(renterId, carId, startDate, endDate, carList[carId].hourlyRentalRate);
+    function submit_rental_request(address renter_address , uint256 carId, uint256 startDate,uint256 endDate) public returns (uint256) {
+        submit_rental_request(renter_address, carId, startDate, endDate, carList[carId].hourlyRentalRate);
     }
 
 
     // if renter wants to offer a different price from listing
-    function submit_rental_request(uint256 renterId , uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public returns (uint256) {
+    function submit_rental_request(address renter_address , uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public returns (uint256) {
         /**
         car renters can submit multiple rental requests
 
@@ -386,8 +400,8 @@ contract DecentralRent{
         this logic can be handled in decentralrent smart contract, rental requests can be modelled as a struct
         */
         //require(car to be listed)
-        require(renterList[renterId].renter_address != address(0));
-        renter memory currentRenter = renterList[renterId]; 
+        require(renter_address != address(0));
+        renter memory currentRenter = renterList[renter_address]; 
 
         // make a new list of requests to append our new rentID in
         //uint256[] memory oldRequests = currentRenter.rentalRequests;
@@ -411,7 +425,7 @@ contract DecentralRent{
         // creating our new rent struct and put into rentList
         rent memory newRentInstance = rent(
             carId,
-            renterList[renterId].renter_address,
+            renter_address,
             carList[carId].owner,
             RentalStatus.Pending, // (pending, approved, rejected) 
             startDate,
@@ -422,7 +436,7 @@ contract DecentralRent{
         rentList[newRentId] = newRentInstance;
 
         
-        emit RentalRequestedSubmitted(renterId,newRentId);
+        emit RentalRequestedSubmitted(renter_address,newRentId);
         emit Notify_owner(carList[carId].owner);
 
         return newRentId;
