@@ -383,7 +383,8 @@ contract DecentralRent{
 
         // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
         // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
-        uint256 hoursElapsed = 3; //hardcoded first
+        // uint256 hoursElapsed = 3; //hardcoded first
+        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
         uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
         require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
 
@@ -414,7 +415,8 @@ contract DecentralRent{
         // TRANSFER THE RENTAL PRICE TO OWNER
         rent memory rentInstance = rentList[rentId];
         address payable recipient = payable(rentInstance.carOwner);
-        uint256 hoursElapsed = 3; //hardcoded first
+        // uint256 hoursElapsed = 3; //hardcoded first
+        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
         uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed;
         recipient.transfer(ethToPay);
     }
