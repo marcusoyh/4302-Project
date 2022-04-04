@@ -14,6 +14,7 @@ contract DecentralRent{
     mapping (address => carOwner) carOwnerInfo; 
     mapping (address => renter) renterList;
     mapping (uint256 => uint256) offer_dates;
+    mapping (uint256 => uint256) rejection_dates;
     mapping (uint256 => issue) issueList; 
     uint256 carIDCount = 0;
     uint256 rentIDCount = 0;
@@ -75,6 +76,7 @@ contract DecentralRent{
         string collectionPoint;
         uint256[] requestedRentIDList; 
         uint256[] rentHistory;
+        uint256[] rejectedRentIDList;
     }
 
     struct rent {
@@ -223,7 +225,8 @@ contract DecentralRent{
         // create new car struct
         uint256[] memory requestedRentIDList;
         uint256[] memory rentHistory;
-        carList[carIDCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedRentIDList, rentHistory);
+        uint256[] memory rejectedList;
+        carList[carIDCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedRentIDList, rentHistory, rejectedList);
         carOwnerInfo[msg.sender].carList.push(carIDCount);
         carOwnerInfo[msg.sender].carCount += 1;
         carIDCount += 1;
@@ -271,6 +274,12 @@ contract DecentralRent{
 
     function reject_rental_request(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) requestedRenter(rentList[rentID].carID, rentID) {
         rentList[rentID].rentalStatus = RentalStatus.Rejected;
+
+        // record the rejected requests of this car in a list
+        // and record the rejection time
+        // the rejected rent request will be deleted from storage if it's over 24h
+        rejection_dates[rentID] = block.timestamp;
+        carList[rentList[rentID].carID].rejectedRentIDList.push(rentID);
         // delete rentList[rentID];
     }
 
@@ -295,18 +304,44 @@ contract DecentralRent{
         emit OfferRecalled(rentID);
     }
 
+    function request_rejected_1day(uint256 rentID) internal view returns (bool) {
+        //auto-depre for deletion of rejected rental request
+        return block.timestamp > rejection_dates[rentID] + 1 days;
+    }
+
     function confirm_car_returned(uint256 rentID) public carOwnerOnly(msg.sender, rentList[rentID].carID) {
         // change car status to returned
         carList[rentList[rentID].carID].carStatus = CarStatus.Available;
+        
         // add rent to car's rentHistory
         carList[rentList[rentID].carID].rentHistory.push(rentID);
+        
+        // delete those rental request of this car that are rejected over 24h ago
+        uint256[] memory newRejectedRentList;
+        uint256 j = 0; // temporary index for memory array newRejectedRentList
+        for (uint i=0; i<carList[rentList[rentID].carID].rejectedRentIDList.length; i++) {
+            if (request_rejected_1day(carList[rentList[rentID].carID].rejectedRentIDList[i])) {
+                // loop thru the existing rejected rent of this car
+                // delete the corresponding rent struct if it has been rejected over 24h ago
+                delete rentList[carList[rentList[rentID].carID].rejectedRentIDList[i]];
+            } else {
+                // if not over 24h, keep the rent id in the rejection list
+                newRejectedRentList[j] = (carList[rentList[rentID].carID].rejectedRentIDList[i]);
+                j++;
+            }
+        }
+        // update the rejected list, remove those id we've alr deleted
+        carList[rentList[rentID].carID].rejectedRentIDList = newRejectedRentList;
+        
         // change rent status
         rentList[rentID].rentalStatus = RentalStatus.Completed;
+        
         // update renter score 
         address renteradd = rentList[rentID].renter;
         renterList[renteradd].completedRentCount ++;
         renterList[renteradd].totalRentCount ++;
         renterList[renteradd].creditScore = renterList[renteradd].completedRentCount/renterList[renteradd].totalRentCount * 100; //maximum 100 marks
+        
         // transfer deposit back to renter
         address payable recipient = payable(renteradd);
         uint256 dep = carList[rentList[rentID].carID].deposit;
