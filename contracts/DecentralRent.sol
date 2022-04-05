@@ -114,6 +114,7 @@ contract DecentralRent{
     event Notify_owner(address owner);
 
     //car owner
+    event CarOwnerRegistered(address carOwner);
     event OfferRecalled(uint256 rentId);
     event CarReturned(uint256 carId);
     event CarUnlisted(uint256 carId);
@@ -217,6 +218,9 @@ contract DecentralRent{
         if(singPassVerify(msg.sender)) {
             carOwnerInfo[msg.sender].verified = true;
         }
+
+        emit CarOwnerRegistered(msg.sender);
+
     }
 
     function register_car(string memory carModel, string memory carPlate) public verifiedUserOnly(msg.sender) {
