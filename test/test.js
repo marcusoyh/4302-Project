@@ -9,6 +9,7 @@ accounts[1] from 2_deploy_contracts -> support_team (from 2_deploy_contracts)
 accounts[2] -> carOwnerAddress1
 accounts[3] -> carOwnerAddress2
 accounts[4] -> renterAddress1
+accounts[5] -> renterAddress2
 */
 
 contract('DecentralRent', function(accounts) {
@@ -35,7 +36,7 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('blalba', async() => {
-        console.log(`in blabla, ${numTesting}`);
+        
     })
 
 
@@ -46,14 +47,13 @@ anything payable, check balance afterwards to verify
 any require statements, test for wrong case (make sure it fails)
 */
 
-
 /* flow 
 -- extra stuff --
 singpassVerify
 singpassVerifyCar 
 
 -- main flow start --
-register 2 x car owner
+*done* register 2 x car owner  
 Car Owner 1 -> register 2 x car
 Car Owner 2 -> register 1 x car
 list all 3 cars
