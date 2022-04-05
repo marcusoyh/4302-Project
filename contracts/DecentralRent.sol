@@ -347,6 +347,10 @@ contract DecentralRent{
         uint256 dep = carList[rentList[rentID].carID].deposit;
         recipient.transfer(dep);
 
+        // update car owner completedRentCount also
+        address owneradd = rentList[rentID].carOwner;
+        carOwnerInfo[owneradd].completedRentCount ++;
+
         emit CarReturned(rentList[rentID].carID);
     }
 
@@ -442,20 +446,31 @@ contract DecentralRent{
         return newRentId;
     }
     
-    function accept_rental_offer(uint256 rentId) public {
-        rent memory rentInstance = rentList[rentId];
+
+    function accept_rental_offer(uint256 rentId) public payable {
+        rent memory rentInstance = rents[rentId];
         require(rentInstance.renter == msg.sender, "This offer does not belong to you");
         require(rentInstance.approved, "Offer not approved yet by car owner");
 
-        rentInstance.accepted = true;
+        // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
+        // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
+        // uint256 hoursElapsed = 3; //hardcoded first
+        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
+        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
+        require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
 
-        delete renterList[rentList[rentId].renter].rentalRequests;   //need to check if this works -- work around is each renter can only requests for max three requests at a time, array initialized at fix size of 0,3   
+        rentInstance.accepted = true;        
 
         emit RentalOfferAccepted(rentId, rentInstance.carId);
         emit Notify_owner(rentInstance.carOwner);
 
-        // TRANSFER RENTAL PRICE + DEPOSIT FROM RENTER TO THIS CONTRACT
+        if (msg.value > ethToPay) {
+            // transfer back remaining Eth
+            address payable recipient = payable(msg.sender);
+            recipient.transfer(msg.value - ethToPay);
+        }
 
+        delete renterList[rentList[rentId].renter].rentalRequests;   //need to check if this works -- work around is each renter can only requests for max three requests at a time, array initialized at fix size of 0,3   
     }
 
     function update_rental_request(uint256 rentID, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentID].carID, CarStatus.Available) rentalInStatus(rentID, RentalStatus.Pending) {
@@ -481,11 +496,18 @@ contract DecentralRent{
         emit CarReceived(renterId, rentID);
         
         // TRANSFER THE RENTAL PRICE TO OWNER
+        rent memory rentInstance = rentList[rentId];
+        address payable recipient = payable(rentInstance.carOwner);
+        // uint256 hoursElapsed = 3; //hardcoded first
+        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
+        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed;
+        recipient.transfer(ethToPay);
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
     function leaveRating(uint256 rentID, uint8 rating) public rentalInStatus(rentID, RentalStatus.Completed){
         require(msg.sender == rentList[rentID].renter || msg.sender == rentList[rentID].carOwner, "You are not involved in this rental.");
+        require(rating <= 5 && rating >=0, "Rating has to be between 0 and 5!");
         // update the owner / renter struct value 
         if (msg.sender == rentList[rentID].renter) {
             uint256 ratedId = rentList[rentID].carOwner;
