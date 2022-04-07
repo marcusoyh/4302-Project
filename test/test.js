@@ -105,6 +105,14 @@ contract('DecentralRent', function(accounts) {
         car1NewDeposit = newDeposit;
     });
 
+    it('5. Test that only the owner can update listed car info', async() => {
+        // function update_listed_car_info(uint256 carId, uint256 hourlyRentalRate, uint256 deposit, uint256 availableStartDate, uint256 availableEndDate, string memory collectionPoint) 
+        let newHourRentalRate = hourlyRentalRate + 40;
+        let newDeposit = deposit + 100
+
+        await truffleAssert.reverts(decentralRentInstance.update_listed_car_info(1, newHourRentalRate , newDeposit , startDate, endDate, 'collectionPoint', {from: carOwnerAddress2}),"only verified car owner can perform this action"); 
+    });
+
 
 
 
