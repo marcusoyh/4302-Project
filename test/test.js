@@ -17,8 +17,8 @@ contract('DecentralRent', function(accounts) {
     let carOwnerAddress2  = accounts[3];
     let renterAddress1  = accounts[4];
     let renterAddress2  = accounts[5];
-    let startDate =  new Date('2022-05-27T10:00');
-    let endDate = new Date('2022-05-30T10:30');
+    let startDate =  new Date('2022-05-27T10:00').getTime()/1000; // save in seconds
+    let endDate = new Date('2022-05-30T10:30').getTime()/1000;
     let hourlyRentalRate = 30;
     let deposit = 50;
     let carCondition = 10;
@@ -35,20 +35,69 @@ contract('DecentralRent', function(accounts) {
         let carOwnerRegistration2 = await decentralRentInstance.register_car_owner({from: carOwnerAddress2});
         truffleAssert.eventEmitted(carOwnerRegistration2, 'CarOwnerRegistered');
         
-        let error;
-        try {
-            await decentralRentInstance.register_car_owner({carOwnerAddress1}); // expected fail
-        } catch (e) {
-            error = e;
-        }
-
-        assert.equal(error?.reason, "car owner has already been registered"); //UNCOMMENT
+        await truffleAssert.reverts(decentralRentInstance.register_car_owner({from: carOwnerAddress1}), "car owner has already been registered");
     });
 
-    // it('2. Test car registration', async() => {
+    it('2. Test car registration', async() => {
 
-    //     let car1 = await decentralRentInstance.register_car({from: accounts[2]});
-    // });
+        let car1 = await decentralRentInstance.register_car("mercedes","car1",{from: carOwnerAddress1}); // owner 1, car 1
+        truffleAssert.eventEmitted(car1 , "CarRegistered");
+
+        let car1Status = await decentralRentInstance.get_car_status_toString(1);
+        assert.strictEqual(car1Status, "Registered", "Car registeration failed");
+
+        let car2 = await decentralRentInstance.register_car("mazda","car2",{from: carOwnerAddress1}); // owner 1, car 2
+        truffleAssert.eventEmitted(car2 , "CarRegistered")
+
+        let car2Status = await decentralRentInstance.get_car_status_toString(2);
+        assert.strictEqual(car2Status, "Registered", "Car registeration failed");
+
+        let car3 = await decentralRentInstance.register_car("honda","car3",{from: carOwnerAddress2}); // owner 2, car 3
+        truffleAssert.eventEmitted(car2 , "CarRegistered");
+
+        let car3Status = await decentralRentInstance.get_car_status_toString(3);
+        assert.strictEqual(car2Status, "Registered", "Car registeration failed");
+     });
+
+     it('3. Test that car listing can only be done by car owner', async() => {
+        await truffleAssert.reverts(decentralRentInstance.list_car_for_rental(1, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress2}), "only verified car owner can perform this action" );   
+        let car1Status = await decentralRentInstance.get_car_status_toString(1);
+        assert.strictEqual(car1Status, "Registered", "Car registeration failed");
+    });
+
+     it('4. Test car listing', async() => {
+
+        let car1Listing = await decentralRentInstance.list_car_for_rental(1, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress1}); 
+        truffleAssert.eventEmitted(car1Listing, "CarListed");
+        
+        let car1Status = await decentralRentInstance.get_car_status_toString(1);
+        assert.strictEqual(car1Status, "Available", "Car registeration failed");
+
+        let car2Listing = await decentralRentInstance.list_car_for_rental(2, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress1});
+        truffleAssert.eventEmitted(car2Listing, "CarListed");
+
+        let car2Status = await decentralRentInstance.get_car_status_toString(2);
+        assert.strictEqual(car2Status, "Available", "Car registeration failed");
+
+        let car3Listing = await decentralRentInstance.list_car_for_rental(3, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress2});
+        truffleAssert.eventEmitted(car2Listing, "CarListed");
+
+        let car3Status = await decentralRentInstance.get_car_status_toString(3);
+        assert.strictEqual(car2Status, "Available", "Car registeration failed");
+    });
+
+
+    it('5. Update listed car info', async() => {
+
+        let car1Update = await decentralRentInstance.update_listed_car_info(1, startDate, endDate, "collectionPoint", hourlyRentalRate + 40, deposit + 100, "Good", {from: carOwnerAddress1}); 
+        let newCarHourlyRentalRate = car1Update
+        assert.strictEqual()
+        truffleAssert.eventEmitted(car1Update, "CarInfoUpdated");
+        
+    });
+
+
+
 
     it('6. Test car renter Registration', async() => {
         let carRenterRegistration1 = await decentralRentInstance.register_car_renter({from: renterAddress1});
@@ -69,24 +118,27 @@ contract('DecentralRent', function(accounts) {
     });
 
     // PLACEHOLDER ACCOUNT CREATION FOR MY TESTING
-    it('placeholder', async() => {
-        // car owner register and list cars
-        await decentralRentInstance.register_car("mercedes","car1",{from: accounts[2]}); // owner 1, car 1
-        await decentralRentInstance.register_car("mazda","car2",{from: accounts[3]}); // owner 2, car 2
-        await decentralRentInstance.list_car_for_rental(1, startDate.getTime()/1000, endDate.getTime()/1000, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[2]}); 
-        await decentralRentInstance.list_car_for_rental(2, startDate.getTime()/1000, endDate.getTime()/1000, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[3]}); 
-
-        // renter register and try submit rental requests
-        await decentralRentInstance.register_car_renter(accounts[4]);
-        await decentralRentInstance.register_car_renter(accounts[5]);
-        // rentIDs should give 1 and 2 but am getting an object for some reason
-        await decentralRentInstance.submit_rental_request(accounts[4], 1, startDate.getTime(), endDate.getTime(), 20); //carID and offeredRate are the two ints
-        await decentralRentInstance.submit_rental_request(accounts[5], 2, startDate.getTime(), endDate.getTime(), 20); //carID and offeredRate are the two ints
-
-        // owner approve requests
-        await decentralRentInstance.approve_rental_request(1, { from: accounts[2] });
-        await decentralRentInstance.approve_rental_request(2, { from: accounts[3] });
-    })
+    /**
+     it('placeholder', async() => {
+         // car owner register and list cars
+         await decentralRentInstance.register_car("mercedes","car1",{from: accounts[2]}); // owner 1, car 1
+         await decentralRentInstance.register_car("mazda","car2",{from: accounts[3]}); // owner 2, car 2
+         await decentralRentInstance.list_car_for_rental(1, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[2]}); 
+         await decentralRentInstance.list_car_for_rental(2, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[3]}); 
+ 
+         // renter register and try submit rental requests
+         await decentralRentInstance.register_car_renter(accounts[4]);
+         await decentralRentInstance.register_car_renter(accounts[5]);
+         // rentIDs should give 1 and 2 but am getting an object for some reason
+         await decentralRentInstance.submit_rental_request(accounts[4], 1, startDate, endDate, 20); //carID and offeredRate are the two ints
+         await decentralRentInstance.submit_rental_request(accounts[5], 2, startDate, endDate, 20); //carID and offeredRate are the two ints
+ 
+         // owner approve requests
+         await decentralRentInstance.approve_rental_request(1, { from: accounts[2] });
+         await decentralRentInstance.approve_rental_request(2, { from: accounts[3] });
+     })
+     * 
+     */
     // PLACEHOLDER ACCOUNTS DONE
 
     it('Test accepting a rental offer', async() => {

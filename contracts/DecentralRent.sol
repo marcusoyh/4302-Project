@@ -115,9 +115,12 @@ contract DecentralRent{
 
     //car owner
     event CarOwnerRegistered(address carOwner);
+    event CarRegistered(uint256 carId);
+    event CarListed(uint256 carId);
     event OfferRecalled(uint256 rentId);
     event CarReturned(uint256 carId);
     event CarUnlisted(uint256 carId);
+    event CarInfoUpdated(uint256 carId);
     
     //car renter
     event RenterRegistered(address renter_address);
@@ -235,6 +238,8 @@ contract DecentralRent{
         carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedrentIdList, rentHistory, rejectedList);
         carOwnerInfo[msg.sender].carList.push(carIdCount);
         carOwnerInfo[msg.sender].carCount += 1;
+
+        emit CarRegistered(carIdCount);
     }
 
 
@@ -250,6 +255,8 @@ contract DecentralRent{
         carList[carId].hourlyRentalRate = hourlyRentalRate;
         carList[carId].carCondition = carCondition;
         carList[carId].carStatus = CarStatus.Available;
+
+        emit CarListed(carId);
     }
 
     function update_listed_car_info(uint256 carId, uint256 hourlyRentalRate, uint256 deposit, uint256 availableStartDate, uint256 availableEndDate, string memory collectionPoint) 
@@ -261,6 +268,8 @@ contract DecentralRent{
         carList[carId].collectionPoint = collectionPoint;
         carList[carId].deposit = deposit;
         carList[carId].hourlyRentalRate = hourlyRentalRate;
+
+        emit CarInfoUpdated(carId);
     }
 
     function approve_rental_request(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) requestedRenter(rentList[rentId].carId, rentId) canApprove(rentId){
@@ -495,7 +504,7 @@ contract DecentralRent{
     }
     
     function confirm_car_received(uint256 rentId) public {
-        require(msg.sender == rentList[rentId].renter, "You are not the renter!");
+        require(msg.sender == rentList[rentId].renter, "You are not the renter!"); //need to prevent reentrancy attack
         address renter_address = msg.sender;
         // require(renterList[renter_address].renter_address == msg.sender);
 
@@ -643,6 +652,16 @@ contract DecentralRent{
 
     function get_car_status(uint256 carId) public view returns(CarStatus) {
         return carList[carId].carStatus;
+    }
+
+    function get_car_status_toString(uint256 carId) public view returns (string memory){
+        CarStatus temp = carList[carId].carStatus;
+        if (temp == CarStatus.Registered) return "Registered";
+        if (temp == CarStatus.Available) return "Available";
+        if (temp == CarStatus.Reserved) return "Reserved";
+        if (temp == CarStatus.Received) return "Received";
+        if (temp == CarStatus.Unavailable) return "Unavailable";
+        if (temp == CarStatus.Abnormal) return "Abnormal";
     }
 
     function get_rent_start_date(uint256 rentId) public view returns(uint256) {
