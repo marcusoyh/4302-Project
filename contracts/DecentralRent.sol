@@ -411,7 +411,7 @@ contract DecentralRent{
         */
         //require(car to be listed)
         require(renter_address != address(0));
-        renter memory currentRenter = renterList[renter_address]; 
+        // renter memory currentRenter = renterList[renter_address]; 
 
         // make a new list of requests to append our new rentId in
         //uint256[] memory oldRequests = currentRenter.rentalRequests;
@@ -501,24 +501,23 @@ contract DecentralRent{
 
         renter memory currentRenter = renterList[renter_address];
         
-        uint256[] memory rentalRequests;
-        currentRenter.rentalRequests = rentalRequests; //clear all other existing rental requests
+        // uint256[] memory rentalRequests;
+        // currentRenter.rentalRequests = rentalRequests; //not needed, allow more than one at once. Purpose: to clear all other existing rental requests
         
 
         currentRenter.currentCar = rentList[rentId].carId;
-        
+        rentList[rentId].rentalStatus = RentalStatus.Ongoing;
+        carList[rentList[rentId].carId].carStatus = CarStatus.Reserved;
+
         emit CarReceived(renter_address, rentId);
         
         // TRANSFER THE RENTAL PRICE TO OWNER
         rent memory rentInstance = rentList[rentId];
         // address payable recipient = payable(rentInstance.carOwner);
         address payable recipient = address(uint160(rentInstance.carOwner));
-
         
         
-        // uint256 hoursElapsed = 3; //hardcoded first
-        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
-        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed;
+        uint256 ethToPay = get_total_rent_price(rentId);
         recipient.transfer(ethToPay);
     }
     
@@ -591,14 +590,20 @@ contract DecentralRent{
 
 
     // getters
-    function get_owner_rating(address userId) public view returns (uint256) {
-        // return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
-        return carOwnerInfo[userId].rating;
+    function get_owner_rating(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].rating;
     }
 
-    function get_renter_rating(address userId) public view returns (uint256) {
-        // return renterList[renter].cumulativeRating / renterList[renter].completedRentCount;
-        return renterList[userId].rating;
+    function get_renter_rating(address user_address) public view returns (uint256) {
+        return renterList[user_address].rating;
+    }
+
+    function get_owner_completed_rent_count(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].completedRentCount;
+    }
+
+    function get_renter_completed_rent_count(address user_address) public view returns (uint256) {
+        return renterList[user_address].completedRentCount;
     }
 
     function get_car_count(address owner) public view returns(uint256) {
@@ -645,6 +650,26 @@ contract DecentralRent{
         return carList[carId].carStatus;
     }
 
+    function get_car_status_toString(uint256 carId) public view returns (string memory){
+        CarStatus temp = carList[carId].carStatus;
+        if (temp == CarStatus.Registered) return "Registered";
+        if (temp == CarStatus.Available) return "Available";
+        if (temp == CarStatus.Reserved) return "Reserved";
+        if (temp == CarStatus.Received) return "Received";
+        if (temp == CarStatus.Unavailable) return "Unavailable";
+        if (temp == CarStatus.Abnormal) return "Abnormal";
+    }
+
+    function get_rent_status_toString(uint256 rentId) public view returns (string memory){
+        RentalStatus temp = rentList[rentId].rentalStatus;
+        if (temp == RentalStatus.Pending) return "Pending";
+        if (temp == RentalStatus.Approved) return "Approved";
+        if (temp == RentalStatus.Rejected) return "Rejected";
+        if (temp == RentalStatus.Cancelled) return "Cancelled";
+        if (temp == RentalStatus.Ongoing) return "Ongoing";
+        if (temp == RentalStatus.Completed) return "Completed";
+    }
+
     function get_rent_start_date(uint256 rentId) public view returns(uint256) {
         return rentList[rentId].startDate;
     }
@@ -653,10 +678,10 @@ contract DecentralRent{
         return rentList[rentId].endDate;
     }
 
-    function get_rent_price(uint256 rentId) public view returns(uint256) {
+    function get_total_rent_price(uint256 rentId) public view returns(uint256) {
         rent memory rentInstance = rentList[rentId];
         uint256 hoursElapsed = (rentInstance.endDate - rentInstance.startDate) / (60 * 60); 
-        return rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
+        return rentInstance.hourlyRentalRate * hoursElapsed;
     }
 
     function get_rent_carId(uint256 rentId) public view returns(uint256) {
@@ -670,10 +695,5 @@ contract DecentralRent{
     function get_rent_status(uint256 rentId) public view returns(RentalStatus) {
         return rentList[rentId].rentalStatus;
     }
-
-    function getEthBalance(address _address) public view returns (uint256) {
-        return _address.balance;
-    }
-    
 
 }
