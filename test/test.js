@@ -35,9 +35,65 @@ contract('DecentralRent', function(accounts) {
         assert.equal(error?.reason, "car owner has already been registered");
     });
 
-    it('blalba', async() => {
-        
+    // PLACEHOLDER ACCOUNT CREATION FOR MY TESTING
+    let startDate;
+    let endDate;
+    let hourlyRentalRate;
+    let deposit;
+    let carCondition;
+    it('placeholder', async() => {
+        // car owner register and list cars
+        startDate =  new Date('2022-05-27T10:00');
+        endDate = new Date('2022-05-30T10:30');
+        hourlyRentalRate = 30;
+        deposit = 50;
+        carCondition = 10;
+        await decentralRentInstance.register_car("mercedes","car1",{from: accounts[2]}); // owner 1, car 1
+        await decentralRentInstance.register_car("mazda","car2",{from: accounts[3]}); // owner 2, car 2
+        await decentralRentInstance.list_car_for_rental(1, startDate.getTime()/1000, endDate.getTime()/1000, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[2]}); 
+        await decentralRentInstance.list_car_for_rental(2, startDate.getTime()/1000, endDate.getTime()/1000, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: accounts[3]}); 
+
+        // renter register and try submit rental requests
+        await decentralRentInstance.register_car_renter(accounts[4]);
+        await decentralRentInstance.register_car_renter(accounts[5]);
+        // rentIDs should give 1 and 2 but am getting an object for some reason
+        await decentralRentInstance.submit_rental_request(accounts[4], 1, startDate.getTime(), endDate.getTime(), 20); //carID and offeredRate are the two ints
+        await decentralRentInstance.submit_rental_request(accounts[5], 2, startDate.getTime(), endDate.getTime(), 20); //carID and offeredRate are the two ints
+
+        // owner approve requests
+        // await decentralRentInstance.approve_rental_request(1, { from: accounts[2] });
+        // await decentralRentInstance.approve_rental_request(2, { from: accounts[3] });
     })
+    // PLACEHOLDER ACCOUNTS DONE
+
+    // it('Test accepting a rental offer', async() => {
+    //     console.log("inside my first test");
+    //     let hoursElapsed = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
+    //     let paymentAmount = (hoursElapsed * hourlyRentalRate) + deposit;
+    //     // renter 1 accept rental offer 1
+    //     let acceptRental1 = await decentralRentInstance.accept_rental_offer(1, { from: accounts[4], value: 10000000000000000});
+    //     // let acceptRental1 = await decentralRentInstance.accept_rental_offer(1, { from: accounts[4], value: paymentAmount+1});
+        
+    //     // renter 2 accept rental offer 2
+    //     // let acceptRental2 = await decentralRentInstance.accept_rental_offer(2, { from: accounts[5], value: 100});
+        
+    // });
+
+    // it('Test confirming car received', async() => {
+        
+    // });
+
+    // it('Test confirming car returned', async() => {
+        
+    // });
+
+    // it('Test renter leaving a rating for owner', async() => {
+        
+    // });
+
+    // it('Test owner leaving a rating for renter', async() => {
+        
+    // });
 
 
 
