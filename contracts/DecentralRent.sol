@@ -136,6 +136,11 @@ contract DecentralRent{
         _;
     }
 
+    modifier registeredCarRenterOnly(address renter_address) {
+        require(renterList[renter_address].verified == true, "only verified car renter can perform this action");
+        _;
+    }
+
     modifier verifiedUserOnly(address person) {
         // this modifier requires to caller to be a verified user of DecentralRent
         require(carOwnerInfo[person].verified == true, "car owner is not verified");
@@ -362,10 +367,10 @@ contract DecentralRent{
     
 /***************************** CAR RENTER ********************************/
 //car renter -> guys 
-    function register_car_renter(address renter_address) public {
-        require(singPassVerify(renter_address));
-        require(renterList[renter_address].verified == false, "car renter has already been registered");
-        renterList[renter_address].verified = true;
+    function register_car_renter() public {
+        require(singPassVerify(msg.sender));
+        require(renterList[msg.sender].verified == false, "car renter has already been registered");
+        renterList[msg.sender].verified = true;
         // uint256[] memory rentalRequests;
         // renterList[renter_address] = renter(
         // renter memory newRenter = renter(
@@ -379,7 +384,7 @@ contract DecentralRent{
         //     rentalRequests
         // );
         // renterList[renter_address] = newRenter;
-        emit RenterRegistered(renter_address);
+        emit RenterRegistered(msg.sender);
     }
 
     // struct renter {
@@ -394,13 +399,13 @@ contract DecentralRent{
     // }
     
     // for the renter to quickly make rent request using LISTING PRICE
-    function submit_rental_request(address renter_address , uint256 carId, uint256 startDate,uint256 endDate) public returns (uint256) {
-        return submit_rental_request(renter_address, carId, startDate, endDate, carList[carId].hourlyRentalRate);
+    function submit_rental_request_without_offer(uint256 carId, uint256 startDate,uint256 endDate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
+        return submit_rental_request_with_offer(carId, startDate, endDate, carList[carId].hourlyRentalRate);
     }
 
 
     // if renter wants to offer a different price from listing
-    function submit_rental_request(address renter_address , uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public returns (uint256) {
+    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
         /**
         car renters can submit multiple rental requests
 
@@ -410,8 +415,8 @@ contract DecentralRent{
         this logic can be handled in decentralrent smart contract, rental requests can be modelled as a struct
         */
         //require(car to be listed)
-        require(renter_address != address(0));
-        renter memory currentRenter = renterList[renter_address]; 
+
+        renter memory currentRenter = renterList[msg.sender]; 
 
         // make a new list of requests to append our new rentId in
         //uint256[] memory oldRequests = currentRenter.rentalRequests;
@@ -431,13 +436,13 @@ contract DecentralRent{
         uint256 newrentId = ++rentIdCount;
         // currentRenter.rentalRequests.push(newrentId);
 
-        renterList[renter_address].rentalRequests.push(carId);
+        renterList[msg.sender].rentalRequests.push(carId);
         carList[carId].requestedrentIdList.push(newrentId);
         
         // creating our new rent struct and put into rentList
         rent memory newRentInstance = rent(
             carId,
-            renter_address,
+            msg.sender,
             carList[carId].owner,
             RentalStatus.Pending, // (pending, approved, rejected) 
             startDate,
@@ -448,9 +453,9 @@ contract DecentralRent{
         rentList[newrentId] = newRentInstance;
 
         
-        emit RentalRequestedSubmitted(renter_address,newrentId);
+        emit RentalRequestedSubmitted(msg.sender,newrentId);
         emit Notify_owner(carList[carId].owner);
-
+        
         return newrentId;
     }
     
@@ -591,14 +596,14 @@ contract DecentralRent{
 
 
     // getters
-    function get_owner_rating(address userId) public view returns (uint256) {
+    function get_owner_rating(address owner_address) public view returns (uint256) {
         // return carOwnerInfo[owner].cumulativeRating / carOwnerInfo[owner].completedRentCount;
-        return carOwnerInfo[userId].rating;
+        return carOwnerInfo[owner_address].rating;
     }
 
-    function get_renter_rating(address userId) public view returns (uint256) {
+    function get_renter_rating(address renter_address) public view returns (uint256) {
         // return renterList[renter].cumulativeRating / renterList[renter].completedRentCount;
-        return renterList[userId].rating;
+        return renterList[renter_address].rating;
     }
 
     function get_car_count(address owner) public view returns(uint256) {
