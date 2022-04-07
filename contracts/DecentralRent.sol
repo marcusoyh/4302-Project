@@ -230,10 +230,10 @@ contract DecentralRent{
         uint256[] memory requestedrentIdList;
         uint256[] memory rentHistory;
         uint256[] memory rejectedList;
+        carIdCount += 1;
         carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedrentIdList, rentHistory, rejectedList);
         carOwnerInfo[msg.sender].carList.push(carIdCount);
         carOwnerInfo[msg.sender].carCount += 1;
-        carIdCount += 1;
     }
 
 
@@ -364,19 +364,20 @@ contract DecentralRent{
     function register_car_renter(address renter_address) public {
         require(singPassVerify(renter_address));
         require(renterList[renter_address].verified == false, "car renter has already been registered");
-        uint256[] memory rentalRequests;
-        renter memory newRenter = renter(
-            true,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            rentalRequests
-        );
-
-        
+        renterList[renter_address].verified = true;
+        // uint256[] memory rentalRequests;
+        // renterList[renter_address] = renter(
+        // renter memory newRenter = renter(
+        //     true,
+        //     0,
+        //     0,
+        //     0,
+        //     0,
+        //     0,
+        //     0,
+        //     rentalRequests
+        // );
+        // renterList[renter_address] = newRenter;
         emit RenterRegistered(renter_address);
     }
 
@@ -393,7 +394,7 @@ contract DecentralRent{
     
     // for the renter to quickly make rent request using LISTING PRICE
     function submit_rental_request(address renter_address , uint256 carId, uint256 startDate,uint256 endDate) public returns (uint256) {
-        submit_rental_request(renter_address, carId, startDate, endDate, carList[carId].hourlyRentalRate);
+        return submit_rental_request(renter_address, carId, startDate, endDate, carList[carId].hourlyRentalRate);
     }
 
 
@@ -418,17 +419,19 @@ contract DecentralRent{
         //for(uint i = 0; i < oldRequests.length; i++) {
         //    newRequests[i] = oldRequests[i];   
         //}
-        // currentRenter.rentalRequests.push(carId);
 
 
-        // create a new rent ID to put into renter struct
+
+        // create a new rent ID to put into currentRenter rentalrequests
+        // rentList[newrentId] = currentRenter;
+        // newRequests[prevLength] = newrentId;
+        // currentRenter.rentalRequests = newRequests;
         
-        //rentList[newrentId] = rentIdCount;
-        //newRequests[oldRequests.length] = newrentId;
-        //currentRenter.rentalRequests = newRequests;
-        
-        uint256 newrentId = rentIdCount++;
+        uint256 newrentId = ++rentIdCount;
         // currentRenter.rentalRequests.push(newrentId);
+
+        renterList[renter_address].rentalRequests.push(carId);
+        carList[carId].requestedrentIdList.push(newrentId);
         
         // creating our new rent struct and put into rentList
         rent memory newRentInstance = rent(
@@ -459,7 +462,7 @@ contract DecentralRent{
         // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
         // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
         // uint256 hoursElapsed = 3; //hardcoded first
-        uint256 hoursElapsed = rentInstance.endDate - rentInstance.startDate * 60 * 60; 
+        uint256 hoursElapsed = (rentInstance.endDate - rentInstance.startDate) / (60 * 60); 
         uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
         require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
 
