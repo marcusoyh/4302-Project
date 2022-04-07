@@ -203,6 +203,7 @@ contract DecentralRent{
     function singPassVerifyCar(address person, string memory carModel, string memory carPlate) private pure returns(bool){
         // this function simulates the verification of car ownership and model through SingPass. 
         // Returns true by default.
+        carModel = carPlate; // just for warning purpose. To be taken out/editted
         bool singPassCar = false;
         if (person != address(0)) {
             singPassCar = true;
@@ -494,7 +495,7 @@ contract DecentralRent{
     }
     
     function confirm_car_received(uint256 rentId) public {
-        require(msg.sender == rentList[rentId].renter);
+        require(msg.sender == rentList[rentId].renter, "You are not the renter!");
         address renter_address = msg.sender;
         // require(renterList[renter_address].renter_address == msg.sender);
 
@@ -652,6 +653,12 @@ contract DecentralRent{
         return rentList[rentId].endDate;
     }
 
+    function get_rent_price(uint256 rentId) public view returns(uint256) {
+        rent memory rentInstance = rentList[rentId];
+        uint256 hoursElapsed = (rentInstance.endDate - rentInstance.startDate) / (60 * 60); 
+        return rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
+    }
+
     function get_rent_carId(uint256 rentId) public view returns(uint256) {
         return rentList[rentId].carId;
     }
@@ -662,6 +669,10 @@ contract DecentralRent{
 
     function get_rent_status(uint256 rentId) public view returns(RentalStatus) {
         return rentList[rentId].rentalStatus;
+    }
+
+    function getEthBalance(address _address) public view returns (uint256) {
+        return _address.balance;
     }
     
 
