@@ -330,7 +330,7 @@ contract DecentralRent{
         return block.timestamp > rejection_dates[rentId] + 1 days;
     }
 
-    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) {
+    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Reserved) {
         // change car status to returned
         carList[rentList[rentId].carId].carStatus = CarStatus.Available;
         
@@ -510,7 +510,7 @@ contract DecentralRent{
         emit RentRequestUpdated(rentId);
     }
     
-    function confirm_car_received(uint256 rentId) public {
+    function confirm_car_received(uint256 rentId) public rentalInStatus(rentId,RentalStatus.Approved) carInStatus(rentList[rentId].carId, CarStatus.Available) {
         require(msg.sender == rentList[rentId].renter, "You are not the renter!"); //need to prevent reentrancy attack
         address renter_address = msg.sender;
         // require(renterList[renter_address].renter_address == msg.sender);
