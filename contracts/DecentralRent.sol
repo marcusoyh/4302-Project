@@ -117,6 +117,8 @@ contract DecentralRent{
     event CarOwnerRegistered(address carOwner);
     event CarRegistered(uint256 carId);
     event CarListed(uint256 carId);
+    event RentalOfferApproved(uint256 rentId);
+    event RentalRequestRejected(uint256 rentId);
     event OfferRecalled(uint256 rentId);
     event CarReturned(uint256 carId);
     event CarUnlisted(uint256 carId);
@@ -197,6 +199,11 @@ contract DecentralRent{
         require(carList[carId].carStatus == status, "The status of this car is not allowed for this option.");
         _;
     }
+
+    // modifier offer_pending_1day(uint256 rentId) internal view returns (bool) {
+    //     //auto-depre for recall approval
+    //     return block.timestamp > offer_dates[rentId] + 1 days;
+    // }
 
     function singPassVerify(address person) private pure returns(bool) {
         // this function simulates the verification through SingPass. 
@@ -281,7 +288,8 @@ contract DecentralRent{
         // change the request status of the rent contract to be approved 
         rentList[rentId].rentalStatus = RentalStatus.Approved;
         offer_dates[rentId] = block.timestamp;
-
+        
+        emit RentalOfferApproved(rentId);
         // change the request status of the rest of the rent inside the request list to be rejected
         //for (uint i=0; i<registeredCarList[rentList[rentId].carId].requestedrentIdList.length; i++) {
         //   if (registeredCarList[rentList[rentId].carId].requestedrentIdList[i] != rentId) {
@@ -321,6 +329,11 @@ contract DecentralRent{
         rentList[rentId].rentalStatus = RentalStatus.Cancelled;
 
         emit OfferRecalled(rentId);
+    }
+
+    //only used for testing purposes
+    function revert_offer_date_by_1day (uint256 rentId) public{
+        offer_dates[rentId] = offer_dates[rentId] - 1 days - 1 minutes; 
     }
 
     function request_rejected_1day(uint256 rentId) internal view returns (bool) {
@@ -709,5 +722,7 @@ contract DecentralRent{
     function get_rent_status(uint256 rentId) public view returns(RentalStatus) {
         return rentList[rentId].rentalStatus;
     }
+
+
 
 }
