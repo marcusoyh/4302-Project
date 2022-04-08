@@ -123,6 +123,7 @@ contract DecentralRent{
     event CarReturned(uint256 carId);
     event CarUnlisted(uint256 carId);
     event CarInfoUpdated(uint256 carId);
+    event CarOwnerNewRating(uint256 rentId);
     
     //car renter
     event RenterRegistered(address renter_address);
@@ -133,6 +134,7 @@ contract DecentralRent{
     event IssueReported(address reporter, uint256 rentId);
     event IssueResolved(uint256 issueId);
     event IssueReopened(uint256 issueId);
+    event RenterNewRating(uint256 rentId);
 
 /***************************** MODIFIERS ********************************/
     modifier carOwnerOnly(address person, uint256 carId) {
@@ -341,7 +343,7 @@ contract DecentralRent{
         return block.timestamp > rejection_dates[rentId] + 1 days;
     }
 
-    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) {
+    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Reserved) {
         // change car status to returned
         carList[rentList[rentId].carId].carStatus = CarStatus.Available;
         
@@ -521,7 +523,7 @@ contract DecentralRent{
         emit RentRequestUpdated(rentId);
     }
     
-    function confirm_car_received(uint256 rentId) public {
+    function confirm_car_received(uint256 rentId) public rentalInStatus(rentId,RentalStatus.Approved) carInStatus(rentList[rentId].carId, CarStatus.Available) {
         require(msg.sender == rentList[rentId].renter, "You are not the renter!"); //need to prevent reentrancy attack
         address renter_address = msg.sender;
         // require(renterList[renter_address].renter_address == msg.sender);
@@ -557,12 +559,16 @@ contract DecentralRent{
             address rater_address = rentList[rentId].carOwner;
             carOwnerInfo[rater_address].rating = (carOwnerInfo[rater_address].rating * carOwnerInfo[rater_address].ratingCount + rating)/(carOwnerInfo[rater_address].ratingCount + 1);
             carOwnerInfo[rater_address].ratingCount++;
+            emit Notify_owner(rater_address);
+            emit CarOwnerNewRating(rentId);
         }
 
         if (msg.sender == rentList[rentId].carOwner) {
             address rater_address = rentList[rentId].renter;
             renterList[rater_address].rating = (renterList[rater_address].rating * renterList[rater_address].ratingCount + rating)/(carOwnerInfo[rater_address].ratingCount + 1);
             renterList[rater_address].ratingCount++;
+            emit Notify_renter(rater_address);
+            emit RenterNewRating(rentId);
         }
     } 
 
@@ -623,6 +629,14 @@ contract DecentralRent{
 
     function get_renter_rating(address user_address) public view returns (uint256) {
         return renterList[user_address].rating;
+    }
+
+    function get_owner_rating_count(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].ratingCount;
+    }
+
+    function get_renter_rating_count(address user_address) public view returns (uint256) {
+        return renterList[user_address].ratingCount;
     }
 
     function get_owner_completed_rent_count(address user_address) public view returns (uint256) {

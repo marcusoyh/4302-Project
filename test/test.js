@@ -21,8 +21,10 @@ contract('DecentralRent', function(accounts) {
     let endDate = new Date('2022-05-30T10:30').getTime()/1000;
     let hourlyRentalRate = 30;
     let deposit = 50;
-    let car1NewDeposit;
+    let car1Deposit;
+    let car2Deposit;
     let carCondition = 10;
+    let amountToPayForRental1;
     
     before(async () => {
         decentralRentInstance = await DecentralRent.deployed();
@@ -70,12 +72,14 @@ contract('DecentralRent', function(accounts) {
 
         let car1Listing = await decentralRentInstance.list_car_for_rental(1, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress1}); 
         truffleAssert.eventEmitted(car1Listing, "CarListed");
+        car1Deposit = deposit;
         
         let car1Status = await decentralRentInstance.get_car_status_toString(1);
         assert.strictEqual(car1Status, "Available", "Car registeration failed");
 
         let car2Listing = await decentralRentInstance.list_car_for_rental(2, startDate, endDate, "collectionPoint", hourlyRentalRate, deposit, carCondition, {from: carOwnerAddress2});
         truffleAssert.eventEmitted(car2Listing, "CarListed");
+        car2Deposit = deposit;
 
         let car2Status = await decentralRentInstance.get_car_status_toString(2);
         assert.strictEqual(car2Status, "Available", "Car registeration failed");
@@ -102,7 +106,7 @@ contract('DecentralRent', function(accounts) {
         assert.strictEqual(newCarDeposit.toNumber(), 150, "Car info update failed");
         truffleAssert.eventEmitted(car1Update, "CarInfoUpdated");
         
-        car1NewDeposit = newDeposit;
+        car1Deposit = newDeposit;
     });
 
     it('5. Test that only the owner can update listed car info', async() => {
@@ -256,40 +260,41 @@ contract('DecentralRent', function(accounts) {
             // await decentralRentInstance.approve_rental_request(2, { from: carOwnerAddress2 });
         })
     
-
-    it('Test accepting a rental offer', async() => {
-
-        // renter 1 accept rental offer 1
+    it('Test accepting a rental offer without enough Ether', async() => {
         let rentalPrice1 = await decentralRentInstance.get_total_rent_price(1);
-        let amountToPay1 = rentalPrice1.toNumber() + car1NewDeposit;
+        amountToPayForRental1 = rentalPrice1.toNumber() + car1Deposit;
+        await truffleAssert.reverts( decentralRentInstance.accept_rental_offer(1, { from: renterAddress1, value: amountToPayForRental1-1}), "Please transfer enough Eth to pay for rental");
+    });
 
-        let rentalPrice2 = await decentralRentInstance.get_total_rent_price(2);
-        let amountToPay2 = rentalPrice2.toNumber() + deposit;
-        
-        // Testing for scenario with not enough Ether
-        await truffleAssert.reverts( decentralRentInstance.accept_rental_offer(1, { from: renterAddress1, value: amountToPay1-1}), "Please transfer enough Eth to pay for rental");
-
-        // Testing for correct scenarios with enough Ether
-        let acceptRental1 = await decentralRentInstance.accept_rental_offer(1, { from: renterAddress1, value: amountToPay1});
+    it('Test Car Renter 1 accepting a rental offer', async() => {
+        let acceptRental1 = await decentralRentInstance.accept_rental_offer(1, { from: renterAddress1, value: amountToPayForRental1});
         truffleAssert.eventEmitted(acceptRental1, 'RentalOfferAccepted');
         truffleAssert.eventEmitted(acceptRental1, 'Notify_owner');
+    });
+    
+    it('Test Car Renter 2 accepting a rental offer', async() => {
+        let rentalPrice2 = await decentralRentInstance.get_total_rent_price(2);
+        let amountToPay2 = rentalPrice2.toNumber() + car2Deposit;
 
-        
-        // renter 2 accept rental offer 2
         let acceptRental2 = await decentralRentInstance.accept_rental_offer(2, { from: renterAddress2, value: amountToPay2});
+        
         truffleAssert.eventEmitted(acceptRental2, 'RentalOfferAccepted');
         truffleAssert.eventEmitted(acceptRental2, 'Notify_owner');
     });
-
-    it('Test renter 1 confirming car received', async() => {
-        // Testing for scenario with wrong renter
+    
+    it(`Test that Car Renter cannot receive another renter's car`, async() => {
         await truffleAssert.reverts( decentralRentInstance.confirm_car_received(1, { from: renterAddress2}), "You are not the renter!");
-                    
+    });
+
+    it('Test that Car Renter 1 can confirm car received and transfer Eth to Car Owner 1', async() => {
+        // Checking owner balance before
         let ownerBalanceBefore = await web3.eth.getBalance(carOwnerAddress1);
 
+        // RECEIVING
         let confirmReceived1 = await decentralRentInstance.confirm_car_received(1, {from: renterAddress1});
         truffleAssert.eventEmitted(confirmReceived1, 'CarReceived');
-
+        
+        // CHECK RENTAL AMOUNT TRANSFER
         let ownerBalanceAfter = await web3.eth.getBalance(carOwnerAddress1);
         let totalRentalPrice = await decentralRentInstance.get_total_rent_price(1);
         let ownerBalanceIncrease = BigInt(ownerBalanceAfter) - BigInt(ownerBalanceBefore);
@@ -300,16 +305,32 @@ contract('DecentralRent', function(accounts) {
             'Car Owner 1 did not receive correct eth amount'
         );
     });
+
+    it('Test that rent and car status changed correctly after Car Renter 1 receives car', async() => {
+        let rentStatusAfter = await decentralRentInstance.get_rent_status_toString(1);
+        let carStatusAfter = await decentralRentInstance.get_car_status_toString(1);
+        assert.strictEqual(
+            rentStatusAfter,
+            "Ongoing",
+            `Expected Rent Status after returning to be "Ongoing"`
+        );
+        assert.strictEqual(
+            carStatusAfter,
+            "Reserved",
+            `Expected Car Status after returning to be "Reserved"`
+        );
+    });
+
+    it('Test that Car Renter 2 can confirm car received and transfer Eth to Car Owner 2', async() => {
     
-    it('Test renter 2 confirming car received', async() => {
-        // Testing for scenario with wrong renter
-        await truffleAssert.reverts(decentralRentInstance.confirm_car_received(2, { from: renterAddress1}), "You are not the renter!");
-        
+        // Checking owner balance before
         let ownerBalanceBefore = await web3.eth.getBalance(carOwnerAddress2);
-                  
+        
+        // RECEIVING
         let confirmReceived2 = await decentralRentInstance.confirm_car_received(2, {from: renterAddress2});
         truffleAssert.eventEmitted(confirmReceived2, 'CarReceived');
-        
+
+        // CHECK RENTAL AMOUNT TRANSFER
         let ownerBalanceAfter = await web3.eth.getBalance(carOwnerAddress2);
         let totalRentalPrice = await decentralRentInstance.get_total_rent_price(2);
         let ownerBalanceIncrease = BigInt(ownerBalanceAfter) - BigInt(ownerBalanceBefore);
@@ -317,67 +338,57 @@ contract('DecentralRent', function(accounts) {
         assert.strictEqual(
             Number(ownerBalanceIncrease),
             totalRentalPrice.toNumber(),
-            'Car Owner 2 did not receive correct eth amount'
+            'Car Owner 2 did not receive correct eth amount for rental'
         );
     });
 
+    it('Test that rent and car status changed correctly after Car Renter 2 receives car', async() => {
+        let rentStatusAfter = await decentralRentInstance.get_rent_status_toString(2);
+        let carStatusAfter = await decentralRentInstance.get_car_status_toString(2);
+        assert.strictEqual(
+            rentStatusAfter,
+            "Ongoing",
+            `Expected Rent Status after returning to be "Ongoing"`
+        );
+        assert.strictEqual(
+            carStatusAfter,
+            "Reserved",
+            `Expected Car Status after returning to be "Reserved"`
+        );
+    });
 
-
-    it('Test owner 1 confirming car returned', async() => {
-        // rent 1, owner 1, renter 1, car 1
-
-        // testing with address not from car owner
+    it('Test that only the car owner can confirm car returned', async() => {
         await truffleAssert.reverts(decentralRentInstance.confirm_car_returned(1), "only verified car owner can perform this action");
+    });
 
-        // Checking correct statuses before the rental
-        let carStatusBefore = await decentralRentInstance.get_rent_status_toString(1);
-        let rentStatusBefore = await decentralRentInstance.get_car_status_toString(1);
+    it('Test Car Owner 1 confirming car returned, with Eth transfer and updated rent count', async() => {
+
+        // rent 1, owner 1, renter 1, car 1
+        // Checking rent counts before the rental
         let ownerCompletedRentCountBefore = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
         let renterCompletedRentCountBefore = await decentralRentInstance.get_renter_completed_rent_count(renterAddress1);
 
-        assert.strictEqual(
-            carStatusBefore,
-            "Ongoing"
-        );
-        assert.strictEqual(
-            rentStatusBefore,
-            "Reserved"
-        );
-
         // Checking renter balance before
         let renterBalanceBefore = await web3.eth.getBalance(renterAddress1);
-
 
         // RETURNING
         let confirmCarReturned1 = await decentralRentInstance.confirm_car_returned(1, {from:carOwnerAddress1});
         truffleAssert.eventEmitted(confirmCarReturned1, 'CarReturned');
 
-        // CHECK FOR CAR AND RENT STATUS CHANGE
-        let carStatusAfter = await decentralRentInstance.get_rent_status_toString(1);
-        let rentStatusAfter = await decentralRentInstance.get_car_status_toString(1);
+        // CHECK RENT COUNT CHANGE
         let ownerCompletedRentCountAfter = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
         let renterCompletedRentCountAfter = await decentralRentInstance.get_renter_completed_rent_count(renterAddress1);
 
         assert.strictEqual(
-            carStatusAfter,
-            "Completed"
-        );
-        assert.strictEqual(
-            rentStatusAfter,
-            "Available"
-        );
-
-        assert.strictEqual(
             ownerCompletedRentCountAfter.toNumber(),
-            ownerCompletedRentCountBefore.toNumber()+1
+            ownerCompletedRentCountBefore.toNumber()+1,
+            "Car Owner 1's rent count did not increase by 1"
         );
         assert.strictEqual(
             renterCompletedRentCountAfter.toNumber(),
-            renterCompletedRentCountBefore.toNumber()+1
+            renterCompletedRentCountBefore.toNumber()+1,
+            "Car Renter 1's rent count did not increase by 1"
         );
-
-
-        // CHECK RENTER SCORE CHANGE
 
         // CHECK DEPOSIT TRANSFER
         let renterBalanceAfter = await web3.eth.getBalance(renterAddress1);
@@ -389,23 +400,83 @@ contract('DecentralRent', function(accounts) {
             carDeposit.toNumber(),
             'Car Renter 1 did not receive correct eth amount for deposit'
         );
-
-
-
     });
 
-    it('7a. Test Getting Car Owner Rating(Intital Rating)', async() => {
-        let owner1Rating = await decentralRentInstance.get_owner_rating(carOwnerAddress1, {from: carOwnerAddress1});
-        assert.strictEqual(owner1Rating.toNumber(), 0, "The rating for car owner 1 should be 0");
+    it('Test that rent and car status changed correctly after renter 1 returns car', async() => {
+        let rentStatusAfter = await decentralRentInstance.get_rent_status_toString(1);
+        let carStatusAfter = await decentralRentInstance.get_car_status_toString(1);
+
+        assert.strictEqual(
+            rentStatusAfter,
+            "Completed",
+            `Expected Rent Status after returning to be "Completed"`
+        );
+        assert.strictEqual(
+            carStatusAfter,
+            "Available",
+            `Expected Car Status after returning to be "Available"`
+        );
     });
 
-    // it('Test renter leaving a rating for owner', async() => {
-        
-    // });
+    it('Test that Car Renter cannot leave invalid rating for Car Owner', async() => {
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 6, {from: renterAddress1}), "Rating has to be between 0 and 5!");
+    });
 
-    // it('Test owner leaving a rating for renter', async() => {
-        
-    // });
+    it(`Test that Car Renter cannot leave rating for someone else's car rental`, async() => {
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 5, {from: renterAddress2}), "You are not involved in this rental.");
+    });
+
+
+    it('Test Car Renter 1 leaving a rating for Car Owner 1', async() => {
+        let ownerRatingBefore = await decentralRentInstance.get_owner_rating(carOwnerAddress1);
+        let ownerRatingCountBefore = await decentralRentInstance.get_owner_rating_count(carOwnerAddress1);
+        let ratingToLeave = 5;
+
+        let leaveRatingForOwner1 = await decentralRentInstance.leaveRating(1,ratingToLeave, {from: renterAddress1});
+        let ownerRatingAfter = await decentralRentInstance.get_owner_rating(carOwnerAddress1);
+
+        let expectedRatingAfter = (ownerRatingBefore.toNumber() * ownerRatingCountBefore.toNumber() + ratingToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+
+        assert.strictEqual(
+            expectedRatingAfter,
+            ownerRatingAfter.toNumber(),
+            'Owner 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'CarOwnerNewRating');
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'Notify_owner');
+    });
+
+    it('Test that Car Owner cannot leave invalid rating for Car Renter', async() => {
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 6, {from: carOwnerAddress1}), "Rating has to be between 0 and 5!");
+    });
+
+    it(`Test that Car Owner cannot leave rating for someone else's car rental`, async() => {
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 5, {from: carOwnerAddress2}), "You are not involved in this rental.");
+    });
+
+
+    it('Test Car Owner 1 leaving a rating for Car Renter 1', async() => {
+        // checking rating values before
+        let renterRatingBefore = await decentralRentInstance.get_renter_rating(renterAddress1);
+        let renterRatingCountBefore = await decentralRentInstance.get_renter_rating_count(renterAddress1);
+        let ratingToLeave = 5;
+
+        // leaving rating
+        let leaveRatingForRenter1 = await decentralRentInstance.leaveRating(1,ratingToLeave, {from: carOwnerAddress1});
+
+        // checking rating values after
+        let renterRatingAfter = await decentralRentInstance.get_renter_rating(renterAddress1);
+        let expectedRatingAfter = (renterRatingBefore.toNumber() * renterRatingCountBefore.toNumber() + ratingToLeave) / (renterRatingCountBefore.toNumber() + 1);
+
+        // checking values
+        assert.strictEqual(
+            expectedRatingAfter,
+            renterRatingAfter.toNumber(),
+            'Car Renter 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'RenterNewRating');
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'Notify_renter');
+    });
 
 
 
