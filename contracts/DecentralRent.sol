@@ -309,6 +309,7 @@ contract DecentralRent{
         // the rejected rent request will be deleted from storage if it's over 24h
         rejection_dates[rentId] = block.timestamp;
         carList[rentList[rentId].carId].rejectedrentIdList.push(rentId);
+        emit RentalRequestRejected(rentId);
         // delete rentList[rentId];
     }
 
@@ -509,16 +510,22 @@ contract DecentralRent{
 
             recipient.transfer(msg.value - ethToPay);
         }
-
-        delete renterList[rentList[rentId].renter].rentalRequests;   //need to check if this works -- work around is each renter can only requests for max three requests at a time, array initialized at fix size of 0,3   
     }
 
-    function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate, uint256 deposit) public carInStatus(rentList[rentId].carId, CarStatus.Available) rentalInStatus(rentId, RentalStatus.Pending) {
+
+    function delete_rental_request(uint256 rentId) public rentalInStatus(rentId, RentalStatus.Pending) {
+        renter memory currentRenter = renterList[rentList[rentId].renter];
+
+        delete currentRenter.rentalRequests[rentId]; // id is 6, this gets sixth element
+        //rentlist, renter side, car side?
+        delete rentList[rentId]; 
+    }
+
+    function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate) public carInStatus(rentList[rentId].carId, CarStatus.Available) rentalInStatus(rentId, RentalStatus.Pending) {
         require(msg.sender == rentList[rentId].renter, "You are not the owner of this rental request.");
         rentList[rentId].startDate = startDate;
         rentList[rentId].endDate = endDate;
         rentList[rentId].hourlyRentalRate = offeredRate;
-        rentList[rentId].deposit = deposit;
 
         emit RentRequestUpdated(rentId);
     }
