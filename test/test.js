@@ -254,7 +254,7 @@ contract('DecentralRent', function(accounts) {
         assert.strictEqual(
             Number(ownerBalanceIncrease),
             totalRentalPrice.toNumber(),
-            'Car Owner 2 did not receive correct eth amount'
+            'Car Owner 2 did not receive correct eth amount for rental'
         );
     });
 
@@ -267,18 +267,20 @@ contract('DecentralRent', function(accounts) {
         await truffleAssert.reverts(decentralRentInstance.confirm_car_returned(1), "only verified car owner can perform this action");
 
         // Checking correct statuses before the rental
-        let carStatusBefore = await decentralRentInstance.get_rent_status_toString(1);
-        let rentStatusBefore = await decentralRentInstance.get_car_status_toString(1);
+        let rentStatusBefore = await decentralRentInstance.get_rent_status_toString(1);
+        let carStatusBefore = await decentralRentInstance.get_car_status_toString(1);
         let ownerCompletedRentCountBefore = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
         let renterCompletedRentCountBefore = await decentralRentInstance.get_renter_completed_rent_count(renterAddress1);
 
         assert.strictEqual(
-            carStatusBefore,
-            "Ongoing"
+            rentStatusBefore,
+            "Ongoing",
+            `Expected Rent Status before returning to be "Ongoing"`
         );
         assert.strictEqual(
-            rentStatusBefore,
-            "Reserved"
+            carStatusBefore,
+            "Reserved",
+            `Expected Car Status before returning to be "Reserved"`
         );
 
         // Checking renter balance before
@@ -290,31 +292,32 @@ contract('DecentralRent', function(accounts) {
         truffleAssert.eventEmitted(confirmCarReturned1, 'CarReturned');
 
         // CHECK FOR CAR AND RENT STATUS CHANGE
-        let carStatusAfter = await decentralRentInstance.get_rent_status_toString(1);
-        let rentStatusAfter = await decentralRentInstance.get_car_status_toString(1);
+        let rentStatusAfter = await decentralRentInstance.get_rent_status_toString(1);
+        let carStatusAfter = await decentralRentInstance.get_car_status_toString(1);
         let ownerCompletedRentCountAfter = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
         let renterCompletedRentCountAfter = await decentralRentInstance.get_renter_completed_rent_count(renterAddress1);
 
         assert.strictEqual(
-            carStatusAfter,
-            "Completed"
+            rentStatusAfter,
+            "Completed",
+            `Expected Rent Status after returning to be "Completed"`
         );
         assert.strictEqual(
-            rentStatusAfter,
-            "Available"
+            carStatusAfter,
+            "Available",
+            `Expected Car Status after returning to be "Available"`
         );
 
         assert.strictEqual(
             ownerCompletedRentCountAfter.toNumber(),
-            ownerCompletedRentCountBefore.toNumber()+1
+            ownerCompletedRentCountBefore.toNumber()+1,
+            "Car Owner 1's rent count did not increase by 1"
         );
         assert.strictEqual(
             renterCompletedRentCountAfter.toNumber(),
-            renterCompletedRentCountBefore.toNumber()+1
+            renterCompletedRentCountBefore.toNumber()+1,
+            "Renter 1's rent count did not increase by 1"
         );
-
-
-        // CHECK RENTER SCORE CHANGE
 
         // CHECK DEPOSIT TRANSFER
         let renterBalanceAfter = await web3.eth.getBalance(renterAddress1);
@@ -331,13 +334,51 @@ contract('DecentralRent', function(accounts) {
 
     });
 
-    // it('Test renter leaving a rating for owner', async() => {
-        
-    // });
+    it('Test renter 1 leaving a rating for owner 1', async() => {
+        let ownerRatingBefore = await decentralRentInstance.get_owner_rating(carOwnerAddress1);
+        let ownerRatingCountBefore = await decentralRentInstance.get_owner_rating_count(carOwnerAddress1);
+        let ratingToLeave = 5;
 
-    // it('Test owner leaving a rating for renter', async() => {
-        
-    // });
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 5, {from: renterAddress2}), "You are not involved in this rental.");
+
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 6, {from: renterAddress1}), "Rating has to be between 0 and 5!");
+
+        let leaveRatingForOwner1 = await decentralRentInstance.leaveRating(1,ratingToLeave, {from: renterAddress1});
+        let ownerRatingAfter = await decentralRentInstance.get_owner_rating(carOwnerAddress1);
+
+        let expectedRatingAfter = (ownerRatingBefore.toNumber() * ownerRatingCountBefore.toNumber() + ratingToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+
+        assert.strictEqual(
+            expectedRatingAfter,
+            ownerRatingAfter.toNumber(),
+            'Owner 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'CarOwnerNewRating');
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'Notify_owner');
+    });
+
+    it('Test owner leaving a rating for renter', async() => {
+        let renterRatingBefore = await decentralRentInstance.get_renter_rating(renterAddress1);
+        let renterRatingCountBefore = await decentralRentInstance.get_renter_rating_count(renterAddress1);
+        let ratingToLeave = 5;
+
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 5, {from: carOwnerAddress2}), "You are not involved in this rental.");
+
+        await truffleAssert.reverts(decentralRentInstance.leaveRating(1, 6, {from: carOwnerAddress1}), "Rating has to be between 0 and 5!");
+
+        let leaveRatingForRenter1 = await decentralRentInstance.leaveRating(1,ratingToLeave, {from: carOwnerAddress1});
+        let renterRatingAfter = await decentralRentInstance.get_renter_rating(renterAddress1);
+
+        let expectedRatingAfter = (renterRatingBefore.toNumber() * renterRatingCountBefore.toNumber() + ratingToLeave) / (renterRatingCountBefore.toNumber() + 1);
+
+        assert.strictEqual(
+            expectedRatingAfter,
+            renterRatingAfter.toNumber(),
+            'Renter 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'RenterNewRating');
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'Notify_renter');
+    });
 
 
 
