@@ -344,7 +344,7 @@ contract DecentralRent{
         return block.timestamp > rejection_dates[rentId] + 1 days;
     }
 
-    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Reserved) {
+    function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Received) {
         // change car status to returned
         carList[rentList[rentId].carId].carStatus = CarStatus.Available;
         
@@ -512,15 +512,6 @@ contract DecentralRent{
         }
     }
 
-
-    function delete_rental_request(uint256 rentId) public rentalInStatus(rentId, RentalStatus.Pending) {
-        renter memory currentRenter = renterList[rentList[rentId].renter];
-
-        delete currentRenter.rentalRequests[rentId]; // id is 6, this gets sixth element
-        //rentlist, renter side, car side?
-        delete rentList[rentId]; 
-    }
-
     function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate) public carInStatus(rentList[rentId].carId, CarStatus.Available) rentalInStatus(rentId, RentalStatus.Pending) {
         require(msg.sender == rentList[rentId].renter, "You are not the owner of this rental request.");
         rentList[rentId].startDate = startDate;
@@ -543,7 +534,7 @@ contract DecentralRent{
 
         currentRenter.currentCar = rentList[rentId].carId;
         rentList[rentId].rentalStatus = RentalStatus.Ongoing;
-        carList[rentList[rentId].carId].carStatus = CarStatus.Reserved;
+        carList[rentList[rentId].carId].carStatus = CarStatus.Received;
 
         emit CarReceived(renter_address, rentId);
         

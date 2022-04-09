@@ -382,7 +382,7 @@ contract('DecentralRent', function(accounts) {
         );
         assert.strictEqual(
             carStatusAfter,
-            "Reserved",
+            "Received",
             `Expected Car Status after returning to be "Reserved"`
         );
     });
@@ -418,7 +418,7 @@ contract('DecentralRent', function(accounts) {
         );
         assert.strictEqual(
             carStatusAfter,
-            "Reserved",
+            "Received",
             `Expected Car Status after returning to be "Reserved"`
         );
     });
