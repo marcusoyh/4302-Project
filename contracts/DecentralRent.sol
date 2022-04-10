@@ -14,7 +14,7 @@ contract DecentralRent{
     mapping (address => carOwner) carOwnerInfo; 
     mapping (address => renter) renterList;
     mapping (uint256 => uint256) offer_dates;
-    mapping (uint256 => uint256) rejection_dates;
+    mapping (uint256 => uint256) cancellation_dates;
     mapping (uint256 => issue) issueList; 
     uint256 carIdCount = 0;
     uint256 rentIdCount = 0;
@@ -76,7 +76,7 @@ contract DecentralRent{
         string collectionPoint;
         uint256[] requestedrentIdList; 
         uint256[] rentHistory;
-        uint256[] rejectedrentIdList;
+        uint256[] cancelledRentIdList;
     }
 
     struct rent {
@@ -129,7 +129,9 @@ contract DecentralRent{
     event RenterRegistered(address renter_address);
     event RentalRequestedSubmitted(address renter_address, uint256 rentId);
     event RentRequestUpdated(uint256 rentId);
+    event RentalRequestRecalled(uint256 rentId);
     event RentalOfferAccepted(uint256 renterId, uint256 carId);
+    event RentalOfferDeclined(uint256 renterId, uint256 carId);
     event CarReceived(address renter_address, uint256 carId);
     event IssueReported(address reporter, uint256 rentId);
     event IssueResolved(uint256 issueId);
@@ -165,6 +167,11 @@ contract DecentralRent{
             }
         }
         require(requested == true, "renter needs to apply to rent this car first");
+        _;
+    }
+
+    modifier requesterOnly(address person, uint256 rentId) {
+        require(rentList[rentId].renter == person, "This rental request does not belong to you.");
         _;
     }
 
@@ -247,9 +254,9 @@ contract DecentralRent{
         // create new car struct
         uint256[] memory requestedrentIdList;
         uint256[] memory rentHistory;
-        uint256[] memory rejectedList;
+        uint256[] memory cancelledList;
         carIdCount += 1;
-        carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedrentIdList, rentHistory, rejectedList);
+        carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, 0, 0, 0, 0, 0, "", requestedrentIdList, rentHistory, cancelledList);
         carOwnerInfo[msg.sender].carList.push(carIdCount);
         carOwnerInfo[msg.sender].carCount += 1;
 
@@ -305,10 +312,10 @@ contract DecentralRent{
         rentList[rentId].rentalStatus = RentalStatus.Rejected;
 
         // record the rejected requests of this car in a list
-        // and record the rejection time
-        // the rejected rent request will be deleted from storage if it's over 24h
-        rejection_dates[rentId] = block.timestamp;
-        carList[rentList[rentId].carId].rejectedrentIdList.push(rentId);
+        // record reject date
+        // those rental requests rejected over 24h will be cleared from storage later
+        cancellation_dates[rentId] = block.timestamp;
+        carList[rentList[rentId].carId].cancelledRentIdList.push(rentId);
         emit RentalRequestRejected(rentId);
         // delete rentList[rentId];
     }
@@ -339,9 +346,9 @@ contract DecentralRent{
         offer_dates[rentId] = offer_dates[rentId] - 1 days - 1 minutes; 
     }
 
-    function request_rejected_1day(uint256 rentId) internal view returns (bool) {
-        //auto-depre for deletion of rejected rental request
-        return block.timestamp > rejection_dates[rentId] + 1 days;
+    function request_cancelled_1day(uint256 rentId) internal view returns (bool) {
+        //auto-depre for deletion of cancelled rental request
+        return block.timestamp > cancellation_dates[rentId] + 1 days;
     }
 
     function confirm_car_returned(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Received) {
@@ -351,22 +358,22 @@ contract DecentralRent{
         // add rent to car's rentHistory
         carList[rentList[rentId].carId].rentHistory.push(rentId);
         
-        // delete those rental request of this car that are rejected over 24h ago
-        uint256[] memory newRejectedRentList;
-        uint256 j = 0; // temporary index for memory array newRejectedRentList
-        for (uint i=0; i<carList[rentList[rentId].carId].rejectedrentIdList.length; i++) {
-            if (request_rejected_1day(carList[rentList[rentId].carId].rejectedrentIdList[i])) {
-                // loop thru the existing rejected rent of this car
-                // delete the corresponding rent struct if it has been rejected over 24h ago
-                delete rentList[carList[rentList[rentId].carId].rejectedrentIdList[i]];
+        // delete those rental request of this car that are rejected/cancelled over 24h ago
+        uint256[] memory newCancelledRentList;
+        uint256 j = 0; // temporary index for memory array newCancelledRentList
+        for (uint i=0; i<carList[rentList[rentId].carId].cancelledRentIdList.length; i++) {
+            if (request_cancelled_1day(carList[rentList[rentId].carId].cancelledRentIdList[i])) {
+                // loop thru the existing cancelled rent of this car
+                // delete the corresponding rent struct if it has been rejected/cancelled over 24h ago
+                delete rentList[carList[rentList[rentId].carId].cancelledRentIdList[i]];
             } else {
-                // if not over 24h, keep the rent id in the rejection list
-                newRejectedRentList[j] = (carList[rentList[rentId].carId].rejectedrentIdList[i]);
+                // if not over 24h, keep the rent id in the cancellation list
+                newCancelledRentList[j] = (carList[rentList[rentId].carId].cancelledRentIdList[i]);
                 j++;
             }
         }
-        // update the rejected list, remove those id we've alr deleted
-        carList[rentList[rentId].carId].rejectedrentIdList = newRejectedRentList;
+        // update the cancelled list, remove those id we've alr deleted
+        carList[rentList[rentId].carId].cancelledRentIdList = newCancelledRentList;
         
         // change rent status
         rentList[rentId].rentalStatus = RentalStatus.Completed;
@@ -484,11 +491,21 @@ contract DecentralRent{
         return newrentId;
     }
     
+    function recall_rental_request(uint256 rentId) public registeredCarRenterOnly(msg.sender) requesterOnly(msg.sender, rentId) rentalInStatus(rentId, RentalStatus.Pending){
+        //change rent request status
+        rentList[rentId].rentalStatus = RentalStatus.Cancelled;
 
-    function accept_rental_offer(uint256 rentId) public payable {
+        // record cancel date
+        // those rental requests cancelled over 24h will be cleared from storage later
+        cancellation_dates[rentId] = block.timestamp;
+        carList[rentList[rentId].carId].cancelledRentIdList.push(rentId);
+
+        emit RentalRequestRecalled(rentId);
+        emit Notify_owner(rentList[rentId].carOwner);
+    }
+
+    function accept_rental_offer(uint256 rentId) public payable registeredCarRenterOnly(msg.sender) requesterOnly(msg.sender, rentId) rentalInStatus(rentId, RentalStatus.Approved){
         rent memory rentInstance = rentList[rentId];
-        require(rentInstance.renter == msg.sender, "This offer does not belong to you");
-        require(rentInstance.rentalStatus == RentalStatus.Approved, "Offer not approved yet by car owner");
 
         // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
         // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
@@ -511,6 +528,19 @@ contract DecentralRent{
             recipient.transfer(msg.value - ethToPay);
         }
     }
+
+    function decline_rental_offer(uint256 rentId) public registeredCarRenterOnly(msg.sender) requesterOnly(msg.sender, rentId) rentalInStatus(rentId, RentalStatus.Approved){
+        // change the request status of the rent contract to be cancelled 
+        rentList[rentId].rentalStatus = RentalStatus.Cancelled;
+
+        // record cancel date
+        // those rental requests cancelled over 24h will be cleared from storage later
+        cancellation_dates[rentId] = block.timestamp;
+        carList[rentList[rentId].carId].cancelledRentIdList.push(rentId);
+        
+        emit RentalOfferDeclined(rentId, rentList[rentId].carId);
+        emit Notify_owner(rentList[rentId].carOwner);
+    } 
 
     function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate) public carInStatus(rentList[rentId].carId, CarStatus.Available) rentalInStatus(rentId, RentalStatus.Pending) {
         require(msg.sender == rentList[rentId].renter, "You are not the owner of this rental request.");
