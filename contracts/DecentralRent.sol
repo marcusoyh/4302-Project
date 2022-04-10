@@ -130,6 +130,7 @@ contract DecentralRent{
     event RentalRequestedSubmitted(address renter_address, uint256 rentId);
     event RentRequestUpdated(uint256 rentId);
     event RentalOfferAccepted(uint256 renterId, uint256 carId);
+    event RentalOfferRejected(uint256 renterId, uint256 carId);
     event CarReceived(address renter_address, uint256 carId);
     event IssueReported(address reporter, uint256 rentId);
     event IssueResolved(uint256 issueId);
@@ -168,6 +169,8 @@ contract DecentralRent{
         _;
     }
 
+
+    // seem to not be working
     modifier canApprove(uint256 rentId) {
         // this modifier requires the owner to be able to approve only if he has not approved a rent in the same period
         bool approve = true;
@@ -199,6 +202,12 @@ contract DecentralRent{
     modifier carInStatus(uint256 carId, CarStatus status) {
         // this modifier requires car in specific status
         require(carList[carId].carStatus == status, "The status of this car is not allowed for this option.");
+        _;
+    }
+
+    modifier carStatusNotOnRent(uint256 carId) {
+        // this modifier requires the caller to be the owner of this car
+        require(carList[carId].carStatus != CarStatus.Received, "Car status cannot be on rent");
         _;
     }
 
@@ -424,13 +433,13 @@ contract DecentralRent{
     // }
     
     // for the renter to quickly make rent request using LISTING PRICE
-    function submit_rental_request_without_offer(uint256 carId, uint256 startDate,uint256 endDate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
+    function submit_rental_request_without_offer(uint256 carId, uint256 startDate,uint256 endDate) public registeredCarRenterOnly(msg.sender) carStatusNotOnRent(carId) returns (uint256) {
         return submit_rental_request_with_offer(carId, startDate, endDate, carList[carId].hourlyRentalRate);
     }
 
 
     // if renter wants to offer a different price from listing
-    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
+    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public carStatusNotOnRent(carId) registeredCarRenterOnly(msg.sender) returns (uint256) {
         /**
         car renters can submit multiple rental requests
 
@@ -511,6 +520,17 @@ contract DecentralRent{
             recipient.transfer(msg.value - ethToPay);
         }
     }
+
+    function reject_rental_offer(uint256 rentId) public {
+        rent memory rentInstance = rentList[rentId];
+        require(rentInstance.renter == msg.sender, "This offer does not belong to you");
+        require(rentInstance.rentalStatus == RentalStatus.Approved, "Offer not approved yet by car owner");
+        rentInstance.rentalStatus = RentalStatus.Rejected;        
+
+        emit RentalOfferRejected(rentId, rentInstance.carId);
+        emit Notify_owner(rentInstance.carOwner);
+    }
+
 
     function update_rental_request(uint256 rentId, uint256 startDate,uint256 endDate, uint256 offeredRate) public carInStatus(rentList[rentId].carId, CarStatus.Available) rentalInStatus(rentId, RentalStatus.Pending) {
         require(msg.sender == rentList[rentId].renter, "You are not the owner of this rental request.");

@@ -250,6 +250,7 @@ contract('DecentralRent', function(accounts) {
         // await decentralRentInstance.approve_rental_request(2, { from: carOwnerAddress2 });
     });
 
+
     it('Xa. Test for unsuccessful rental request rejection (not the car owner)', async() => {
         await decentralRentInstance.submit_rental_request_with_offer(3, startDate, endDate, 20, {from: renterAddress1});
         await truffleAssert.reverts(decentralRentInstance.reject_rental_request(5, { from: carOwnerAddress1 }), "only verified car owner can perform this action");
@@ -346,6 +347,30 @@ contract('DecentralRent', function(accounts) {
         );
 
         decentralRentEthBalance = newContractBalance;
+    });
+
+    it('Za. Test for unsuccessful car renter rejecting a rental offer(not the right renter)', async() => {
+        // renter 1 submit rental request 4
+        // owner 1 approve rental reuqest 4
+        // renter 1 reject rental offer 4
+
+        //10 days earlier so that car is available
+        //seem to havbe
+        await decentralRentInstance.submit_rental_request_with_offer(1, startDate - 864000, endDate - 864000, 30, {from: renterAddress1});
+        await decentralRentInstance.approve_rental_request(6, { from: carOwnerAddress1 });
+
+        truffleAssert.reverts(decentralRentInstance.reject_rental_offer(6, {from: renterAddress2}), "This offer does not belong to you.");
+
+
+    });
+
+    it('ZB. Test for Car Renter rejecting a rental offer', async() => {
+
+        let rejctionRental1 = await decentralRentInstance.reject_rental_offer(6, {from: renterAddress1});
+
+        truffleAssert.eventEmitted(rejctionRental1, 'RentalOfferRejected');
+        truffleAssert.eventEmitted(rejctionRental1, 'Notify_owner');
+
     });
     
     it(`13a. Test unsuccessful receiving of a car (another renter's car)`, async() => {
@@ -580,6 +605,10 @@ get renter rating for request 3 -> would be 0
 
 (renter 1) accept rental offer 1
 (renter 2) accept rental offer 2
+
+renter 1 submit rental request 4
+owner 1 approve rental reuqest 4
+renter 1 reject rental offer 4
 
 
 rent 1 - renter 1 confirm car received
