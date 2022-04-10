@@ -8,6 +8,7 @@ pragma solidity >= 0.5.0;
 contract DecentralRent{
     address _owner = msg.sender;
     uint256 platformFee;
+    uint256 commissionPercent; // records the percentage of commission to be charged upon every deal. e.g. 2 means 2%
     address _support_team;    
     mapping (uint256 => car) carList; 
     mapping (uint256 => rent) rentList;
@@ -21,9 +22,10 @@ contract DecentralRent{
     uint256 renterIDCount = 0;
     uint256 issueIDCount = 0;
 
-    constructor(uint256 fee, address supportAddress) public {
+    constructor(uint256 fee, uint256 percentage, address supportAddress) public {
         _support_team = supportAddress;
         platformFee = fee;
+        commissionPercent = percentage;
     }
 
     enum CarStatus {
@@ -60,6 +62,7 @@ contract DecentralRent{
         uint256 completedRentCount;
         uint256 rating;
         uint256 ratingCount;
+        uint256[] rentalRequests; //Rent IDs
     }
 
     struct car {
@@ -437,7 +440,7 @@ contract DecentralRent{
 
 
     // if renter wants to offer a different price from listing
-    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
+    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) carInStatus(carId, CarStatus.Available) returns (uint256) {
         /**
         car renters can submit multiple rental requests
 
@@ -468,7 +471,8 @@ contract DecentralRent{
         uint256 newrentId = ++rentIdCount;
         // currentRenter.rentalRequests.push(newrentId);
 
-        renterList[msg.sender].rentalRequests.push(carId);
+        renterList[msg.sender].rentalRequests.push(newrentId);
+        carOwnerInfo[carList[carId].owner].rentalRequests.push(newrentId);
         carList[carId].requestedrentIdList.push(newrentId);
         
         // creating our new rent struct and put into rentList
@@ -551,8 +555,7 @@ contract DecentralRent{
         emit RentRequestUpdated(rentId);
     }
     
-    function confirm_car_received(uint256 rentId) public rentalInStatus(rentId,RentalStatus.Approved) carInStatus(rentList[rentId].carId, CarStatus.Available) {
-        require(msg.sender == rentList[rentId].renter, "You are not the renter!"); //need to prevent reentrancy attack
+    function confirm_car_received(uint256 rentId) public rentalInStatus(rentId,RentalStatus.Approved) requesterOnly(msg.sender, rentId) carInStatus(rentList[rentId].carId, CarStatus.Available) {
         address renter_address = msg.sender;
         // require(renterList[renter_address].renter_address == msg.sender);
 
@@ -573,8 +576,8 @@ contract DecentralRent{
         // address payable recipient = payable(rentInstance.carOwner);
         address payable recipient = address(uint160(rentInstance.carOwner));
         
-        
-        uint256 ethToPay = get_total_rent_price(rentId);
+        uint256 commissionCharge = get_total_rent_price(rentId) * commissionPercent / 100;
+        uint256 ethToPay = get_total_rent_price(rentId) - commissionCharge;
         recipient.transfer(ethToPay);
     }
     
@@ -648,9 +651,40 @@ contract DecentralRent{
     }
 
 
+    // getters for frontend
+    function get_my_rental_requests() public view returns (rent[] memory) {
+        require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
+        rent[] memory myRentList;
+        if (renterList[msg.sender].verified) {
+            for (uint i=0; i<renterList[msg.sender].rentalRequests.length; i++) {
+                myRentList[i] = rentList[renterList[msg.sender].rentalRequests[i]];
+            }
+        } else if (carOwnerInfo[msg.sender].verified) {
+            for (uint i=0; i<carOwnerInfo[msg.sender].rentalRequests.length; i++) {
+                myRentList[i] = rentList[carOwnerInfo[msg.sender].rentalRequests[i]];
+            }
+        }
+        return myRentList;
+    }
+
+    function get_car_rental_requests(uint256 carId) public view verifiedUserOnly(msg.sender) returns (rent[] memory) {
+        // get my rental requests for a car
+        // for car owner use only
+        rent[] memory myRentList;
+        for (uint i=0; i<carList[carId].requestedrentIdList.length; i++) {
+            myRentList[i] = rentList[carList[carId].requestedrentIdList[i]];
+        }
+        return myRentList;
+    }
+
+    function get_a_rental_request_details(uint256 rentId) public view returns (rent memory) {
+        require(msg.sender == rentList[rentId].renter || msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
+        
+        return rentList[rentId];
+    }
 
 
-    // getters
+    // getters for smart contract
     function get_owner_rating(address user_address) public view returns (uint256) {
         return carOwnerInfo[user_address].rating;
     }
