@@ -100,7 +100,7 @@ contract DecentralRent{
         uint256 creditScore;
         uint256 rating;
         uint256 ratingCount;
-        uint256 currentCar; //Car ID if renting, 0 if not
+        uint256[] currentCars; //Ongoing car IDs
         uint256[] rentalRequests; //Rent IDs
     }
 
@@ -360,6 +360,21 @@ contract DecentralRent{
         
         // add rent to car's rentHistory
         carList[rentList[rentId].carId].rentHistory.push(rentId);
+
+        // remove car from the renter's current car list
+        uint256 currentCarIndex;
+        uint256 currentCarCount = renterList[rentList[rentId].renter].currentCars.length;
+        for (uint i=0; i<currentCarCount; i++) {
+            if(renterList[rentList[rentId].renter].currentCars[i] == rentList[rentId].carId) {
+                currentCarIndex = i;
+                break;
+            }
+        }
+        delete renterList[rentList[rentId].renter].currentCars[currentCarIndex];
+        // move up the last element to the deleted gap
+        renterList[rentList[rentId].renter].currentCars[currentCarIndex] = renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
+        delete renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
+        
         
         // delete those rental request of this car that are rejected/cancelled over 24h ago
         uint256[] memory newCancelledRentList;
@@ -556,20 +571,11 @@ contract DecentralRent{
     }
     
     function confirm_car_received(uint256 rentId) public rentalInStatus(rentId,RentalStatus.Approved) requesterOnly(msg.sender, rentId) carInStatus(rentList[rentId].carId, CarStatus.Available) {
-        address renter_address = msg.sender;
-        // require(renterList[renter_address].renter_address == msg.sender);
-
-        renter memory currentRenter = renterList[renter_address];
-        
-        // uint256[] memory rentalRequests;
-        // currentRenter.rentalRequests = rentalRequests; //not needed, allow more than one at once. Purpose: to clear all other existing rental requests
-        
-
-        currentRenter.currentCar = rentList[rentId].carId;
+        renterList[msg.sender].currentCars.push(rentList[rentId].carId);
         rentList[rentId].rentalStatus = RentalStatus.Ongoing;
         carList[rentList[rentId].carId].carStatus = CarStatus.Received;
 
-        emit CarReceived(renter_address, rentId);
+        emit CarReceived(msg.sender, rentId);
         
         // TRANSFER THE RENTAL PRICE TO OWNER
         rent memory rentInstance = rentList[rentId];
@@ -681,6 +687,16 @@ contract DecentralRent{
         require(msg.sender == rentList[rentId].renter || msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
         
         return rentList[rentId];
+    }
+
+    function get_current_cars(address person) public view returns (car[] memory) {
+        // get a renter's current cars
+        require(renterList[person].verified, "This account is not a renter account.");
+        car[] memory currCars;
+        for (uint i=0; i<renterList[person].currentCars.length; i++) {
+            currCars[i] = carList[renterList[person].currentCars[i]];
+        }
+        return currCars;
     }
 
 
