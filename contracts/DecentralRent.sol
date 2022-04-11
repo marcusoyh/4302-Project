@@ -16,6 +16,7 @@ contract DecentralRent{
     mapping (address => renter) renterList;
     mapping (uint256 => uint256) offer_dates;
     mapping (uint256 => uint256) cancellation_dates;
+    mapping (uint256 => uint256) issue_resolved_dates;
     mapping (uint256 => issue) issueList; 
     uint256 carIdCount = 0;
     uint256 rentIdCount = 0;
@@ -61,7 +62,9 @@ contract DecentralRent{
         uint256 carCount;
         uint256[] carList;
         uint256 completedRentCount;
-        uint256 rating;
+        uint256 carConditionRating;
+        uint256 attitude;
+        uint256 responseSpeed;
         uint256 ratingCount;
         uint256 creditScore;
         uint256[] rentalRequests; //Rent IDs
@@ -101,7 +104,8 @@ contract DecentralRent{
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
-        uint256 rating;
+        uint256 attitude;
+        uint256 responseSpeed;
         uint256 ratingCount;
         uint256[] currentCars; //Ongoing car IDs
         uint256[] rentalRequests; //Rent IDs
@@ -608,26 +612,37 @@ contract DecentralRent{
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
-    function leaveRating(uint256 rentId, uint256 rating) public rentalInStatus(rentId, RentalStatus.Completed){
-        require(msg.sender == rentList[rentId].renter || msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
-        require(rating <= 5 && rating >=0, "Rating has to be between 0 and 5!");
-        // update the owner / renter struct value 
-        if (msg.sender == rentList[rentId].renter) {
-            address rater_address = rentList[rentId].carOwner;
-            carOwnerInfo[rater_address].rating = (carOwnerInfo[rater_address].rating * carOwnerInfo[rater_address].ratingCount + rating)/(carOwnerInfo[rater_address].ratingCount + 1);
-            carOwnerInfo[rater_address].ratingCount++;
-            emit Notify_owner(rater_address);
-            emit CarOwnerNewRating(rentId);
-        }
+    function renter_leave_rating(uint256 rentId, uint256 carConditionRating, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed){
+        require(msg.sender == rentList[rentId].renter, "You are not involved in this rental.");
+        require(carConditionRating <= 5 && carConditionRating >=0, "Rating has to be between 0 and 5!");
+        require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
+        require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
 
-        if (msg.sender == rentList[rentId].carOwner) {
-            address rater_address = rentList[rentId].renter;
-            renterList[rater_address].rating = (renterList[rater_address].rating * renterList[rater_address].ratingCount + rating)/(carOwnerInfo[rater_address].ratingCount + 1);
-            renterList[rater_address].ratingCount++;
-            emit Notify_renter(rater_address);
-            emit RenterNewRating(rentId);
-        }
+        // update the renter struct value 
+    
+        address rater_address = rentList[rentId].carOwner;
+        uint256 rating_count = carOwnerInfo[rater_address].ratingCount;
+        carOwnerInfo[rater_address].carConditionRating = (carOwnerInfo[rater_address].carConditionRating * rating_count + carConditionRating)/(rating_count + 1);
+        carOwnerInfo[rater_address].attitude = (carOwnerInfo[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
+        carOwnerInfo[rater_address].responseSpeed = (carOwnerInfo[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
+        carOwnerInfo[rater_address].ratingCount++;
+        emit Notify_owner(rater_address);
+        emit CarOwnerNewRating(rentId);
     } 
+
+    function owner_leave_rating(uint256 rentId, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed) {
+        require(msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
+        require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
+        require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
+
+        address rater_address = rentList[rentId].renter;
+        uint256 rating_count = renterList[rater_address].ratingCount;
+        renterList[rater_address].attitude = (renterList[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
+        renterList[rater_address].responseSpeed = (renterList[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
+        renterList[rater_address].ratingCount++;
+        emit Notify_renter(rater_address);
+        emit RenterNewRating(rentId);
+    }
 
 //support team 
 
@@ -654,7 +669,7 @@ contract DecentralRent{
         emit Notify_renter(currentRent.renter); 
     }
 
-    function supportTeamTransfer(uint256 issueId, uint256 amount, address payable recipient) public payable supportTeamOnly(msg.sender) issueInStatus(issueId, IssueStatus.Created) {
+    function support_team_transfer(uint256 issueId, uint256 amount, address payable recipient) public payable supportTeamOnly(msg.sender) issueInStatus(issueId, IssueStatus.Created) {
         // issue status set to Solving to guard against re-entrancy attack 
         issue memory issueInstance = issueList[issueId];
         issueInstance.issueStatus = IssueStatus.Solving;
@@ -671,6 +686,8 @@ contract DecentralRent{
         address car_owner = currentRent.carOwner;
         address car_renter = currentRent.renter;
         address reporter = issueInstance.reporter;
+
+        issue_resolved_dates[issueId] = block.timestamp;
 
         if (reporter == car_owner) {
             renterList[car_renter].creditScore -= changeInCreditScore;
@@ -689,7 +706,13 @@ contract DecentralRent{
         issueInstance.issueStatus = IssueStatus.Rejected;
     }
 
+    function reopen_within_7day(uint256 issueId) internal view returns (bool) {
+        //auto-depre for deletion of cancelled rental request
+        return block.timestamp < issue_resolved_dates[issueId] + 7 days;
+    }
+
     function reopen_issue(uint256 issueId) public {
+        require(reopen_within_7day(issueId) == true, "you can only reopen an issue within 7 days after it is resolved");
         // could be renter or owner?
         uint256 rentId = issueList[issueId].rentId;
         rent memory currentRent = rentList[rentId];
@@ -892,11 +915,26 @@ contract DecentralRent{
     }
 
     function owner_get_my_issues() public view verifiedOwnerOnly(msg.sender) returns(uint256[] memory) {
+        // only verified owner can call this function
         return carOwnerInfo[msg.sender].issueList;
     }
 
     function renter_get_my_issues() public view verifiedRenterOnly(msg.sender) returns(uint256[] memory) {
+        // only verified renter can call this function
         return renterList[msg.sender].issueList;
     }
+
+    function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
+        // only support team can call this function
+        issue[] memory unsolvedIssues;
+        for (uint i=0; i<issueIDCount; i++) {
+            if (issueList[i].issueStatus == IssueStatus.Created || issueList[i].issueStatus == IssueStatus.Solving) {
+                unsolvedIssues.push(issueList[i]);
+            }
+        }
+        return unsolvedIssues;
+    }
+
+
 
 }
