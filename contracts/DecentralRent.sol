@@ -202,7 +202,7 @@ contract DecentralRent{
         require(rentList[rentId].renter == person, "This rental request does not belong to you.");
         _;
     }
-
+    
     modifier canApprove(uint256 rentId) {
         // this modifier requires the owner to be able to approve only if he has not approved a rent in the same period
         bool approve = true;
@@ -270,7 +270,6 @@ contract DecentralRent{
     }
     
 //car owner 
-    // xb
     function register_car_owner() public {
         // never use carOwner struct to register?
         require(carOwnerInfo[msg.sender].verified == false, "car owner has already been registered");
@@ -297,8 +296,6 @@ contract DecentralRent{
         emit CarRegistered(carIdCount);
     }
 
-
-    // xinyi
     function list_car_for_rental(uint256 carId, uint256 availableStartDate, uint256 availableEndDate, string memory collectionPoint, uint256 hourlyRentalRate, uint256 deposit, uint256 carCondition) 
         public carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Registered) {
 
@@ -347,7 +344,6 @@ contract DecentralRent{
         // delete rentList[rentId];
     }
 
-    // yitong
     function unlist_car(uint256 carId) public carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Available) {
         carList[carId].carStatus = CarStatus.Unavailable;
 
@@ -378,6 +374,7 @@ contract DecentralRent{
         return block.timestamp > cancellation_dates[rentId] + 1 days;
     }
 
+    // causes gas to run out, so i comment out first
     function confirm_car_returned(uint256 rentId) public payable carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Ongoing) carInStatus(rentList[rentId].carId, CarStatus.Received) {
         // change car status to returned
         carList[rentList[rentId].carId].carStatus = CarStatus.Available;
@@ -399,11 +396,12 @@ contract DecentralRent{
         renterList[rentList[rentId].renter].currentCars[currentCarIndex] = renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
         delete renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
         
-        
+        // causes compilation error, so i comment out first 
         // delete those rental request of this car that are rejected/cancelled over 24h ago
-        uint256[] memory newCancelledRentList;
+        /* uint256[] memory newCancelledRentList;
         uint256 j = 0; // temporary index for memory array newCancelledRentList
         for (uint i=0; i<carList[rentList[rentId].carId].cancelledRentIdList.length; i++) {
+
             if (request_cancelled_1day(carList[rentList[rentId].carId].cancelledRentIdList[i])) {
                 // loop thru the existing cancelled rent of this car
                 // delete the corresponding rent struct if it has been rejected/cancelled over 24h ago
@@ -415,7 +413,7 @@ contract DecentralRent{
             }
         }
         // update the cancelled list, remove those id we've alr deleted
-        carList[rentList[rentId].carId].cancelledRentIdList = newCancelledRentList;
+        carList[rentList[rentId].carId].cancelledRentIdList = newCancelledRentList; */
         
         // change rent status
         rentList[rentId].rentalStatus = RentalStatus.Completed;
@@ -436,7 +434,7 @@ contract DecentralRent{
         carOwnerInfo[owneradd].completedRentCount ++;
 
         emit CarReturned(rentList[rentId].carId);
-    }
+    } 
 
     
 /***************************** CAR RENTER ********************************/
@@ -647,7 +645,7 @@ contract DecentralRent{
 //support team 
 
     // common for both
-    function report_issues(uint256 rentId, string memory details, string memory contact, string memory proofImageUrl) public supportTeamOnly(msg.sender) rentalInStatus(rentId, RentalStatus.Ongoing) {
+    function report_issue(uint256 rentId, string memory details, string memory contact, string memory proofImageUrl) public rentalInStatus(rentId, RentalStatus.Ongoing) {
         //CHECK IF OWNER OR RENTER
         rent memory currentRent = rentList[rentId];
         address car_owner = currentRent.carOwner;
@@ -669,11 +667,12 @@ contract DecentralRent{
         emit Notify_renter(currentRent.renter); 
     }
 
-    function support_team_transfer(uint256 issueId, uint256 amount, address payable recipient) public payable supportTeamOnly(msg.sender) issueInStatus(issueId, IssueStatus.Created) {
+    function support_team_transfer(uint256 issueId, uint256 amount, address recipientAddress) public payable supportTeamOnly(msg.sender) issueInStatus(issueId, IssueStatus.Created) {
         // issue status set to Solving to guard against re-entrancy attack 
         issue memory issueInstance = issueList[issueId];
         issueInstance.issueStatus = IssueStatus.Solving;
-    
+
+         address payable recipient = address(uint160(recipientAddress));
         recipient.transfer(amount);
     }
 
@@ -690,9 +689,13 @@ contract DecentralRent{
         issue_resolved_dates[issueId] = block.timestamp;
 
         if (reporter == car_owner) {
-            renterList[car_renter].creditScore -= changeInCreditScore;
+            if (renterList[car_renter].creditScore - changeInCreditScore >= 0) {
+                renterList[car_renter].creditScore -= changeInCreditScore;
+            }
         } else {
-            carOwnerInfo[car_owner].creditScore -= changeInCreditScore;
+            if (carOwnerInfo[car_owner].creditScore - changeInCreditScore >= 0) {
+                carOwnerInfo[car_owner].creditScore -= changeInCreditScore;
+            }
         }
 
         emit Notify_owner(currentRent.carOwner);
@@ -700,18 +703,23 @@ contract DecentralRent{
         emit IssueResolved(issueId);
     }
 
-    function reject_issue(uint256 issueId) public {
+    function reject_issue(uint256 issueId) public view {
         require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
         issue memory issueInstance = issueList[issueId];
         issueInstance.issueStatus = IssueStatus.Rejected;
     }
 
-    function reopen_within_7day(uint256 issueId) internal view returns (bool) {
-        //auto-depre for deletion of cancelled rental request
-        return block.timestamp < issue_resolved_dates[issueId] + 7 days;
+    //only used for testing purposes
+    function revert_issue_resolved_date_by_7day(uint256 issueId) public{
+        issue_resolved_dates[issueId] = issue_resolved_dates[issueId] - 7 days - 1 minutes; 
     }
 
-    function reopen_issue(uint256 issueId) public {
+    function reopen_within_7day(uint256 issueId) internal view returns (bool) {
+        //auto-depre for deletion of cancelled rental request
+        return block.timestamp <= issue_resolved_dates[issueId] + 7 days;
+    }
+
+    function reopen_issue(uint256 issueId, string memory updatedDetails) public {
         require(reopen_within_7day(issueId) == true, "you can only reopen an issue within 7 days after it is resolved");
         // could be renter or owner?
         uint256 rentId = issueList[issueId].rentId;
@@ -722,6 +730,7 @@ contract DecentralRent{
         require(msg.sender == car_owner || msg.sender == car_renter, "Issue does not involve you!");
 
         issueList[issueId].issueStatus = IssueStatus.Created;
+        issueList[issueId].details = updatedDetails;
 
         // events
         emit IssueReopened(issueId);
@@ -743,6 +752,7 @@ contract DecentralRent{
     }
 
     // getters for frontend
+    /*
     function get_my_rental_requests() public view returns (rent[] memory) {
         require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
         rent[] memory myRentList;
@@ -782,15 +792,39 @@ contract DecentralRent{
             currCars[i] = carList[renterList[person].currentCars[i]];
         }
         return currCars;
-    }
+    } */
 
     // getters for smart contract
-    function get_owner_rating(address user_address) public view returns (uint256) {
-        return carOwnerInfo[user_address].rating;
+    function get_current_time()public view returns (uint256) {
+        return block.timestamp;
     }
 
-    function get_renter_rating(address user_address) public view returns (uint256) {
-        return renterList[user_address].rating;
+    function get_owner_car_condition_rating(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].carConditionRating;
+    }
+
+    function get_owner_attitude(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].attitude;
+    }
+
+    function get_owner_response_speed(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].responseSpeed;
+    }
+
+    function get_renter_attitude(address user_address) public view returns (uint256) {
+        return renterList[user_address].attitude;
+    }
+
+    function get_renter_response_speed(address user_address) public view returns (uint256) {
+        return renterList[user_address].responseSpeed;
+    }
+
+    function get_owner_credit_score(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].creditScore;
+    }
+
+    function get_renter_credit_score(address user_address) public view returns (uint256) {
+        return renterList[user_address].creditScore;
     }
 
     function get_owner_rating_count(address user_address) public view returns (uint256) {
@@ -925,7 +959,7 @@ contract DecentralRent{
         return renterList[msg.sender].issueList;
     }
 
-    function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
+    /*function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
         // only support team can call this function
         issue[] memory unsolvedIssues;
         for (uint i=0; i<issueIDCount; i++) {
@@ -934,8 +968,6 @@ contract DecentralRent{
             }
         }
         return unsolvedIssues;
-    }
-
-
+    } */
 
 }

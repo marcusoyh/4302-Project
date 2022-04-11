@@ -46,7 +46,7 @@ module.exports = {
      host: "127.0.0.1",     // Localhost (default: none)
      port: 8545,            // 8545 for CLI, 7545 for GUI
      network_id: "*",       // Any network (default: none)
-     gas: 8000000,           // Gas sent with each transaction (default: ~6700000)
+     gas: 30000000,           // Gas sent with each transaction (default: ~6700000)
      gasPrice: 875000000,  // 20 gwei (in wei) (default: 100 gwei)
     },
     // Another network with more advanced options...
