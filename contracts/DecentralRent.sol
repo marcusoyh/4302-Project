@@ -738,7 +738,8 @@ contract DecentralRent{
 
     function withdraw_profit(uint256 amount) public payable decentralRentOwnerOnly(msg.sender) {
         // only owner of decentralRent can call this function 
-        _owner.transfer(amount);
+        address payable recipient = address(uint160(_owner));
+        recipient.transfer(amount);
     }
 
     // getters for frontend
