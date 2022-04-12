@@ -131,10 +131,10 @@ contract('DecentralRent', function(accounts) {
     });
     
     it('6. Test Getting Car Owner Rating(Intital Rating)', async() => {
-        let owner1CarConditionRating = await decentralRentInstance.get_owner_car_condition_rating(carOwnerAddress1, {from: carOwnerAddress1});
+        let owner1CarConditionDescription = await decentralRentInstance.get_owner_car_condition_description(carOwnerAddress1, {from: carOwnerAddress1});
         let owner1Attitude= await decentralRentInstance.get_owner_attitude(carOwnerAddress1, {from: carOwnerAddress1});
         let owner1ResponseSpeed = await decentralRentInstance.get_owner_response_speed(carOwnerAddress1, {from: carOwnerAddress1});
-        assert.strictEqual(owner1CarConditionRating.toNumber(), 0, "The car condition rating for car owner 1 should be 0");
+        assert.strictEqual(owner1CarConditionDescription.toNumber(), 0, "The car condition rating for car owner 1 should be 0");
         assert.strictEqual(owner1Attitude.toNumber(), 0, "The attitude for car owner 1 should be 0");
         assert.strictEqual(owner1ResponseSpeed.toNumber(), 0, "The response speed for car owner 1 should be 0");
     });
@@ -496,29 +496,29 @@ contract('DecentralRent', function(accounts) {
 
     it('18c. Test successful leaving of rating (Car Renter 1) for Car Owner 1', async() => {
         // checking rating values before
-        let ownerCarConditionRatingBefore = await decentralRentInstance.get_owner_car_condition_rating(carOwnerAddress1);
+        let ownerCarConditionDescriptionBefore = await decentralRentInstance.get_owner_car_condition_description(carOwnerAddress1);
         let ownerAttitudeBefore = await decentralRentInstance.get_owner_attitude(carOwnerAddress1);
         let ownerResponseSpeedBefore = await decentralRentInstance.get_owner_response_speed(carOwnerAddress1);
         let ownerRatingCountBefore = await decentralRentInstance.get_owner_rating_count(carOwnerAddress1);
-        let carConditionRatingToLeave = 5;
+        let carConditionDescriptionToLeave = 5;
         let attitudeToLeave = 5;
         let responseSpeedToLeave = 5
 
         // leaving rating
-        let leaveRatingForOwner1 = await decentralRentInstance.renter_leave_rating(1, carConditionRatingToLeave, attitudeToLeave,  responseSpeedToLeave, {from: renterAddress1});
-        let ownerCarConditionRatingAfter = await decentralRentInstance.get_owner_car_condition_rating(carOwnerAddress1);
+        let leaveRatingForOwner1 = await decentralRentInstance.renter_leave_rating(1, carConditionDescriptionToLeave, attitudeToLeave,  responseSpeedToLeave, {from: renterAddress1});
+        let ownerCarConditionDescriptionAfter = await decentralRentInstance.get_owner_car_condition_description(carOwnerAddress1);
         let ownerAttitudeAfter = await decentralRentInstance.get_owner_attitude(carOwnerAddress1);
         let ownerResponseSpeedAfter = await decentralRentInstance.get_owner_response_speed(carOwnerAddress1);
 
         // checking rating values after
-        let expectedCarConditionRatingAfter = (ownerCarConditionRatingBefore.toNumber() * ownerRatingCountBefore.toNumber() + carConditionRatingToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+        let expectedCarConditionDescriptionAfter = (ownerCarConditionDescriptionBefore.toNumber() * ownerRatingCountBefore.toNumber() + carConditionDescriptionToLeave) / (ownerRatingCountBefore.toNumber() + 1);
         let expectedAttitudeAfter = (ownerAttitudeBefore.toNumber() * ownerRatingCountBefore.toNumber() + attitudeToLeave) / (ownerRatingCountBefore.toNumber() + 1);
         let expectedResponseSpeedAfter = (ownerResponseSpeedBefore.toNumber() * ownerRatingCountBefore.toNumber() + responseSpeedToLeave) / (ownerRatingCountBefore.toNumber() + 1);
 
         // checking values
         assert.strictEqual(
-            expectedCarConditionRatingAfter,
-            ownerCarConditionRatingAfter .toNumber(),
+            expectedCarConditionDescriptionAfter,
+            ownerCarConditionDescriptionAfter .toNumber(),
             'Owner 1 rating did not change as expected'
         );
 
