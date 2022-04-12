@@ -433,6 +433,7 @@ contract DecentralRent{
         carList[rentList[rentId].carId].rentHistory.push(rentId);
 
         // remove car from the renter's current car list
+        /*
         uint256 currentCarIndex;
         //uint256 currentCarCount = renterList[rentList[rentId].renter].currentCars.length;
         for (uint i=0; i<renterList[rentList[rentId].renter].currentCars.length; i++) {
@@ -447,7 +448,7 @@ contract DecentralRent{
         delete renterList[rentList[rentId].renter].currentCars[renterList[rentList[rentId].renter].currentCars.length - 1];
 
         reject_expired_requests(rentId);
-        delete_expired_requests(rentId);
+        delete_expired_requests(rentId);*/
 
         // change rent status
         rentList[rentId].rentalStatus = RentalStatus.Completed;
@@ -858,8 +859,7 @@ contract DecentralRent{
             currCars[i] = carList[renterList[person].currentCars[i]];
         }
         return currCars;
-    } 
-    */
+    } */
 
     // getters for smart contract
     function get_current_time()public view returns (uint256) {
@@ -1019,7 +1019,7 @@ contract DecentralRent{
         return renterList[msg.sender].issueList;
     }
 
-    /*function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
+    /* function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
         // only support team can call this function
         issue[] memory unsolvedIssues;
         for (uint i=0; i<issueIDCount; i++) {

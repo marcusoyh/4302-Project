@@ -971,10 +971,16 @@
       "links": {},
       "address": "0xAD7A189eDf1F89a9F98571ABAe193804194f4BC0",
       "transactionHash": "0x6d5e3e44e0f33c46f76421db8da1bc46fe1e69349bc079f6a85d1e2e418dc67c"
+    },
+    "1649752067832": {
+      "events": {},
+      "links": {},
+      "address": "0x55A5220Ce0b6d23f03A4C639EB76a1B7b819A674",
+      "transactionHash": "0xe359ecf59160f3e7a7205a15d08a836ca54371243f1b832f711945e110fcb225"
     }
   },
   "schemaVersion": "3.4.4",
-  "updatedAt": "2022-04-11T16:13:32.573Z",
+  "updatedAt": "2022-04-12T09:05:24.144Z",
   "networkType": "ethereum",
   "devdoc": {
     "methods": {}
