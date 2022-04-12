@@ -311,10 +311,6 @@ contract DecentralRent{
         carList[carId].carCondition = carCondition;
         carList[carId].carStatus = CarStatus.Available;
 
-        // transfer platform fee to contract owner
-        address payable recipient = address(uint160(address(this)));
-        recipient.transfer(platformFee);
-
         // return extra back to the car owner
         address payable owner = address(uint160(msg.sender));
         owner.transfer(msg.value - platformFee);
@@ -464,9 +460,6 @@ contract DecentralRent{
         uint256 dep = carList[rentList[rentId].carId].deposit;
         uint256 commissionCharge = dep * commissionPercent / 100;
         recipient.transfer(dep - commissionCharge);
-        // transfer commission to contract
-        address payable contractOwner = address(uint160(address(this)));
-        contractOwner.transfer(commissionCharge);
 
         // update car owner completedRentCount also
         address owneradd = rentList[rentId].carOwner;
