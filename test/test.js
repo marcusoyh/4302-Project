@@ -607,23 +607,6 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('21b. Test support team resolve issue', async() => {
-        /*
-        let renterBalanceBefore = await web3.eth.getBalance(renterAddress1);
-
-        let confirmCarReturned2 = await decentralRentInstance.confirm_car_returned(2, {from:carOwnerAddress2});
-        truffleAssert.eventEmitted(confirmCarReturned2, 'CarReturned');
-
-        // CHECK DEPOSIT TRANSFER
-        let renterBalanceAfter = await web3.eth.getBalance(renterAddress1);
-        let renterBalanceIncrease = BigInt(renterBalanceAfter) - BigInt(renterBalanceBefore);
-        let carDeposit = await decentralRentInstance.get_car_deposit(1);
-
-        assert.strictEqual(
-            Number(renterBalanceIncrease),
-            carDeposit.toNumber(),
-            'Car Renter 1 did not receive correct eth amount for deposit'
-        );*/
-
         let creditScoreBefore = await decentralRentInstance.get_renter_credit_score(renterAddress2);
         let changeInCreditScore = 1;
 
@@ -648,23 +631,7 @@ contract('DecentralRent', function(accounts) {
         truffleAssert.eventEmitted(resolveIssue1, 'Notify_renter');
     });
 
-    it('23a. Test Car Owner 2 reopened issue', async() => {
-        let reopenIssue1 = await decentralRentInstance.reopen_issue(0, 'car scratched', { from: carOwnerAddress2 });
-
-        truffleAssert.eventEmitted(reopenIssue1, 'IssueReopened');
-        truffleAssert.eventEmitted(reopenIssue1, 'Notify_owner');
-        truffleAssert.eventEmitted(reopenIssue1, 'Notify_renter');
-    });
-
-    it('23b. Test support team resolve issue again', async() => {
-        let resolveIssue2 = await decentralRentInstance.resolve_issue(0, 1, { from: accounts[1] });
-
-        truffleAssert.eventEmitted(resolveIssue2, 'IssueResolved');
-        truffleAssert.eventEmitted(resolveIssue2, 'Notify_owner');
-        truffleAssert.eventEmitted(resolveIssue2, 'Notify_renter');
-    });
-
-    it('24a. Test Renter 3 report issue with Rent 3 (never receive car)', async() => {
+    it('22a. Test Renter 3 report issue with Rent 3 (never receive car)', async() => {
         let carRenterRegistration3 = await decentralRentInstance.register_car_renter({from: renterAddress3});
         truffleAssert.eventEmitted(carRenterRegistration3, 'RenterRegistered');  
 
@@ -691,6 +658,47 @@ contract('DecentralRent', function(accounts) {
         truffleAssert.eventEmitted(reportIssue2, 'IssueReported');
         truffleAssert.eventEmitted(reportIssue2, 'Notify_owner');
         truffleAssert.eventEmitted(reportIssue2, 'Notify_renter');
+    });
+
+    it('22b. Test support team resolve issue', async() => {
+        let creditScoreBefore = await decentralRentInstance.get_renter_credit_score(renterAddress2);
+        let changeInCreditScore = 1;
+
+        let resolveIssue1 = await decentralRentInstance.resolve_issue(0, changeInCreditScore, { from: accounts[1] });
+        //let currentTime = decentralRentInstance.get_current_time();
+        //console.log(currentTime);
+
+        let creditScoreAfter = await decentralRentInstance.get_renter_credit_score(renterAddress2);
+        let expectedScoreAfter = 0;
+        if (creditScoreBefore - changeInCreditScore >= 0) {
+            expectedScoreAfter = creditScoreBefore - changeInCreditScore;
+        }
+
+        assert.strictEqual(
+            expectedScoreAfter,
+            creditScoreAfter.toNumber(),
+            'Car Renter 2 credit score did not change as expected'
+        );
+
+        truffleAssert.eventEmitted(resolveIssue1, 'IssueResolved');
+        truffleAssert.eventEmitted(resolveIssue1, 'Notify_owner');
+        truffleAssert.eventEmitted(resolveIssue1, 'Notify_renter');
+    });
+
+    it('23a. Test Renter 3 reopened issue', async() => {
+        let reopenIssue1 = await decentralRentInstance.reopen_issue(0, 'car scratched', { from: carOwnerAddress2 });
+
+        truffleAssert.eventEmitted(reopenIssue1, 'IssueReopened');
+        truffleAssert.eventEmitted(reopenIssue1, 'Notify_owner');
+        truffleAssert.eventEmitted(reopenIssue1, 'Notify_renter');
+    });
+
+    it('23b. Test support team resolve issue again', async() => {
+        let resolveIssue2 = await decentralRentInstance.resolve_issue(0, 1, { from: accounts[1] });
+
+        truffleAssert.eventEmitted(resolveIssue2, 'IssueResolved');
+        truffleAssert.eventEmitted(resolveIssue2, 'Notify_owner');
+        truffleAssert.eventEmitted(resolveIssue2, 'Notify_renter');
     });
 
     it('24b. Test Transfer rent and deposit back to Renter 3', async() => {
