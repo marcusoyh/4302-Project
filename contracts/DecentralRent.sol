@@ -1,5 +1,4 @@
 pragma solidity >= 0.5.0; 
-pragma experimental ABIEncoderV2;
 
 // try to optimise by using memory storage 
 // try to integrate learnings from lecture 9 
@@ -64,12 +63,8 @@ contract DecentralRent{
         uint256 carCount;
         uint256[] carList;
         uint256 completedRentCount;
-<<<<<<< Updated upstream
-        uint256 carConditionDescription;
-=======
         uint256 totalRentCount;
         uint256 carConditionRating;
->>>>>>> Stashed changes
         uint256 attitude;
         uint256 responseSpeed;
         uint256 ratingCount;
@@ -84,7 +79,9 @@ contract DecentralRent{
         // (available, reserved, received, on_rent, returned, missing)
         string carPlate; // maybe can be revealed only after the rent has been confirmed;
         string carModel;
-        string[] imageURL;
+        string imageURL1;
+        string imageURL2;
+        string imageURL3;
         uint256 hourlyRentalRate;
         uint256 deposit;
         uint256 carCondition; // 1-10
@@ -112,7 +109,6 @@ contract DecentralRent{
         uint256 creditScore;
         uint256 attitude;
         uint256 responseSpeed;
-        uint256 carConditionMaintaining;
         uint256 ratingCount;
         uint256[] currentCars; //Ongoing car IDs
         uint256[] rentalRequests; //Rent IDs
@@ -288,16 +284,15 @@ contract DecentralRent{
 
     }
 
-    function register_car(string memory carModel, string memory carPlate, string[] memory imageURL) public verifiedOwnerOnly(msg.sender) {
+    function register_car(string memory carModel, string memory carPlate, string memory imageURL1, string memory imageURL2, string memory imageURL3) public verifiedOwnerOnly(msg.sender) {
         // require verification of car
         require(singPassVerifyCar(msg.sender, carModel, carPlate) == true, "car does not pass verification"); 
-        require(imageURL.length >= 3, "must upload at least 3 images");
         // create new car struct
         uint256[] memory requestedrentIdList;
         uint256[] memory rentHistory;
         uint256[] memory cancelledList;
         carIdCount += 1;
-        carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, imageURL, 0, 0, 0, "", requestedrentIdList, rentHistory, cancelledList);
+        carList[carIdCount] = car(msg.sender, CarStatus.Registered, carPlate, carModel, imageURL1, imageURL2, imageURL3, 0, 0, 0, "", requestedrentIdList, rentHistory, cancelledList);
         carOwnerInfo[msg.sender].carList.push(carIdCount);
         carOwnerInfo[msg.sender].carCount += 1;
 
@@ -327,7 +322,7 @@ contract DecentralRent{
         emit CarListed(carId);
     }
 
-    function update_listed_car_info(uint256 carId, uint256 hourlyRentalRate, uint256 deposit, string memory collectionPoint, string[] memory imageURL) 
+    function update_listed_car_info(uint256 carId, uint256 hourlyRentalRate, uint256 deposit, string memory collectionPoint, string memory imageURL1, string memory imageURL2, string memory imageURL3 ) 
         public carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Available) {
         
         //modify information in the car struct
@@ -335,7 +330,10 @@ contract DecentralRent{
         carList[carId].collectionPoint = collectionPoint;
         carList[carId].deposit = deposit;
         carList[carId].hourlyRentalRate = hourlyRentalRate;
-        carList[carId].imageURL = imageURL;
+        carList[carId].imageURL1 = imageURL1;
+        carList[carId].imageURL2 = imageURL2;
+        carList[carId].imageURL3 = imageURL3;
+
 
         emit CarInfoUpdated(carId);
     }
@@ -436,8 +434,8 @@ contract DecentralRent{
 
         // remove car from the renter's current car list
         uint256 currentCarIndex;
-        uint256 currentCarCount = renterList[rentList[rentId].renter].currentCars.length;
-        for (uint i=0; i<currentCarCount; i++) {
+        //uint256 currentCarCount = renterList[rentList[rentId].renter].currentCars.length;
+        for (uint i=0; i<renterList[rentList[rentId].renter].currentCars.length; i++) {
             if(renterList[rentList[rentId].renter].currentCars[i] == rentList[rentId].carId) {
                 currentCarIndex = i;
                 break;
@@ -445,10 +443,9 @@ contract DecentralRent{
         }
         delete renterList[rentList[rentId].renter].currentCars[currentCarIndex];
         // move up the last element to the deleted gap
-        renterList[rentList[rentId].renter].currentCars[currentCarIndex] = renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
-        delete renterList[rentList[rentId].renter].currentCars[currentCarCount - 1];
-        
-        // causes compilation error, so i comment out first 
+        renterList[rentList[rentId].renter].currentCars[currentCarIndex] = renterList[rentList[rentId].renter].currentCars[renterList[rentList[rentId].renter].currentCars.length - 1];
+        delete renterList[rentList[rentId].renter].currentCars[renterList[rentList[rentId].renter].currentCars.length - 1];
+
         reject_expired_requests(rentId);
         delete_expired_requests(rentId);
 
@@ -654,9 +651,9 @@ contract DecentralRent{
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
-    function renter_leave_rating(uint256 rentId, uint256 carConditionDescription, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed){
+    function renter_leave_rating(uint256 rentId, uint256 carConditionRating, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed){
         require(msg.sender == rentList[rentId].renter, "You are not involved in this rental.");
-        require(carConditionDescription <= 5 && carConditionDescription >=0, "Rating has to be between 0 and 5!");
+        require(carConditionRating <= 5 && carConditionRating >=0, "Rating has to be between 0 and 5!");
         require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
         require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
 
@@ -664,7 +661,7 @@ contract DecentralRent{
     
         address rater_address = rentList[rentId].carOwner;
         uint256 rating_count = carOwnerInfo[rater_address].ratingCount;
-        carOwnerInfo[rater_address].carConditionDescription = (carOwnerInfo[rater_address].carConditionDescription * rating_count + carConditionDescription)/(rating_count + 1);
+        carOwnerInfo[rater_address].carConditionRating = (carOwnerInfo[rater_address].carConditionRating * rating_count + carConditionRating)/(rating_count + 1);
         carOwnerInfo[rater_address].attitude = (carOwnerInfo[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
         carOwnerInfo[rater_address].responseSpeed = (carOwnerInfo[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
         carOwnerInfo[rater_address].ratingCount++;
@@ -672,19 +669,17 @@ contract DecentralRent{
         emit CarOwnerNewRating(rentId);
     } 
 
-    function owner_leave_rating(uint256 rentId, uint256 carConditionMaintaining, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed) {
+    function owner_leave_rating(uint256 rentId, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed) {
         require(msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
-        require(carConditionMaintaining <= 5 && carConditionMaintaining >=0, "Rating has to be between 0 and 5!");
         require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
         require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
 
-        address rated_address = rentList[rentId].renter;
-        uint256 rating_count = renterList[rated_address].ratingCount;
-        renterList[rated_address].carConditionMaintaining = (renterList[rated_address].carConditionMaintaining * rating_count + carConditionMaintaining)/(rating_count + 1);
-        renterList[rated_address].attitude = (renterList[rated_address].attitude * rating_count + attitude)/(rating_count + 1);
-        renterList[rated_address].responseSpeed = (renterList[rated_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
-        renterList[rated_address].ratingCount++;
-        emit Notify_renter(rated_address);
+        address rater_address = rentList[rentId].renter;
+        uint256 rating_count = renterList[rater_address].ratingCount;
+        renterList[rater_address].attitude = (renterList[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
+        renterList[rater_address].responseSpeed = (renterList[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
+        renterList[rater_address].ratingCount++;
+        emit Notify_renter(rater_address);
         emit RenterNewRating(rentId);
     }
 
@@ -798,7 +793,7 @@ contract DecentralRent{
     }
 
     // getters for frontend
-
+    /*
     function view_all_cars() public view returns (car[] memory) {
         require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
         car[] memory allCars;
@@ -809,7 +804,7 @@ contract DecentralRent{
 
     }
 
-    function view_my_cars() public view verifiedOwnerOnly(msg.sender) returns (car[] memory)  {
+    function view_my_cars() public view verifiedOwnerOnly(msg.sender) returns (uint256[] memory)  {
         car[] memory myCars;
         for (uint i=0; i<carOwnerInfo[msg.sender].carList.length; i++) {
             uint256 id = carOwnerInfo[msg.sender].carList[i];
@@ -864,14 +859,15 @@ contract DecentralRent{
         }
         return currCars;
     } 
+    */
 
     // getters for smart contract
     function get_current_time()public view returns (uint256) {
         return block.timestamp;
     }
 
-    function get_owner_car_condition_description(address user_address) public view returns (uint256) {
-        return carOwnerInfo[user_address].carConditionDescription;
+    function get_owner_car_condition_rating(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].carConditionRating;
     }
 
     function get_owner_attitude(address user_address) public view returns (uint256) {
@@ -880,10 +876,6 @@ contract DecentralRent{
 
     function get_owner_response_speed(address user_address) public view returns (uint256) {
         return carOwnerInfo[user_address].responseSpeed;
-    }
-
-    function get_renter_car_condition_maintaining(address user_address) public view returns (uint256) {
-        return renterList[user_address].carConditionMaintaining;
     }
 
     function get_renter_attitude(address user_address) public view returns (uint256) {
