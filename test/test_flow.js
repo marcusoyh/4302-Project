@@ -14,17 +14,17 @@ contract('DecentralRent', function(accounts) {
         // Register owner 1 & renter 1 and 2 
         let carOwnerRegistration1 = await decentralRentInstance.register_car_owner({ from: carOwnerAddress1 });
         truffleAssert.eventEmitted(carOwnerRegistration1, 'CarOwnerRegistered');
-        
+
         let carRenterRegistration1 = await decentralRentInstance.register_car_renter({ from: renterAddress1 });
         truffleAssert.eventEmitted(carRenterRegistration1, 'RenterRegistered');
 
         let carRenterRegistration2 = await decentralRentInstance.register_car_renter({ from: renterAddress2 });
         truffleAssert.eventEmitted(carRenterRegistration2, 'RenterRegistered');
-        
+
         // Owner 1 register car 1
         let car1 = await decentralRentInstance.register_car("mercedes", "car1", { from: carOwnerAddress1 }); // owner 1, car 1
         truffleAssert.eventEmitted(car1, "CarRegistered");
-        
+
         let car1Status = await decentralRentInstance.get_car_status_toString(1);
         assert.strictEqual(car1Status, "Registered", "Car registeration failed");
 
@@ -65,5 +65,4 @@ contract('DecentralRent', function(accounts) {
 
 
     });
-
-}
+})

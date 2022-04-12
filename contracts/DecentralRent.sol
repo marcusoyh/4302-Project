@@ -33,9 +33,7 @@ contract DecentralRent{
     enum CarStatus {
         Registered,
         Available,
-        Reserved,
         Received,
-        Unavailable,
         Abnormal
     }
 
@@ -45,7 +43,8 @@ contract DecentralRent{
         Rejected,
         Cancelled, 
         Ongoing,
-        Completed
+        Completed,
+        Abnormal
     } 
     //'Ongoing' when renter accept offer
     //'Cancelled' when owner recall approval/renter reject offer
@@ -64,7 +63,7 @@ contract DecentralRent{
         uint256[] carList;
         uint256 completedRentCount;
         uint256 totalRentCount;
-        uint256 carConditionRating;
+        uint256 carConditionDescription;
         uint256 attitude;
         uint256 responseSpeed;
         uint256 ratingCount;
@@ -76,7 +75,7 @@ contract DecentralRent{
     struct car {
         address owner;
         CarStatus carStatus;
-        // (available, reserved, received, on_rent, returned, missing)
+        // (available, received, on_rent, returned, missing)
         string carPlate; // maybe can be revealed only after the rent has been confirmed;
         string carModel;
         string imageURL1;
@@ -100,6 +99,8 @@ contract DecentralRent{
         uint256 endDate;
         uint256 hourlyRentalRate; // Named offeredRate at submit_rental_requests, updates throughout nego
         uint256 deposit; // is fixed, no nego.
+        bool penaliseRenter;
+        bool penaliseOwner;
     }
 
     struct renter {
@@ -107,6 +108,7 @@ contract DecentralRent{
         uint256 completedRentCount;
         uint256 totalRentCount; 
         uint256 creditScore;
+        uint256 carConditionMaintaining;
         uint256 attitude;
         uint256 responseSpeed;
         uint256 ratingCount;
@@ -301,7 +303,6 @@ contract DecentralRent{
 
     function list_car_for_rental(uint256 carId, string memory collectionPoint, uint256 hourlyRentalRate, uint256 deposit, uint256 carCondition) 
         public payable carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Registered) {
-        
         require(msg.value >= platformFee, "please pay correct platform Fee");
        
         // add information to the car struct
@@ -338,7 +339,6 @@ contract DecentralRent{
         // change the request status of the rent contract to be approved 
         rentList[rentId].rentalStatus = RentalStatus.Approved;
         offer_dates[rentId] = block.timestamp;
-        carList[rentList[rentId].carId].carStatus = CarStatus.Reserved;
 
         emit RentalOfferApproved(rentId);
     } 
@@ -356,7 +356,7 @@ contract DecentralRent{
     }
 
     function unlist_car(uint256 carId) public carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Available) {
-        carList[carId].carStatus = CarStatus.Unavailable;
+        carList[carId].carStatus = CarStatus.Registered;
 
         emit CarUnlisted(carId);
     }
@@ -366,11 +366,12 @@ contract DecentralRent{
         return block.timestamp > offer_dates[rentId] + 1 days;
     }
 
-    function recall_approval(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Approved) carInStatus(rentList[rentId].carId, CarStatus.Reserved) {
+    function recall_approval(uint256 rentId) public carOwnerOnly(msg.sender, rentList[rentId].carId) rentalInStatus(rentId, RentalStatus.Approved) carInStatus(rentList[rentId].carId, CarStatus.Available) {
         require(offer_pending_1day(rentId), "You can only recall it after 24h since your approval.");
         //change rent request status and car status
         carList[rentList[rentId].carId].carStatus = CarStatus.Available;
         rentList[rentId].rentalStatus = RentalStatus.Cancelled;
+        //rentList[rentId].renter = Address(0);
 
         emit OfferRecalled(rentId);
     }
@@ -449,24 +450,28 @@ contract DecentralRent{
         // change rent status
         rentList[rentId].rentalStatus = RentalStatus.Completed;
         
-        // update renter score 
+        // update users' credit score 
+        address owneradd = rentList[rentId].carOwner;
+        if(!rentList[rentId].penaliseOwner) {
+            carOwnerInfo[owneradd].completedRentCount ++;
+        }
+        carOwnerInfo[owneradd].totalRentCount ++;
+        carOwnerInfo[owneradd].creditScore = carOwnerInfo[owneradd].completedRentCount*100/carOwnerInfo[owneradd].totalRentCount; 
+        
+        
         address renteradd = rentList[rentId].renter;
-        renterList[renteradd].completedRentCount ++;
+        if(!rentList[rentId].penaliseRenter) {
+            renterList[renteradd].completedRentCount ++;
+        } 
         renterList[renteradd].totalRentCount ++;
-        renterList[renteradd].creditScore = renterList[renteradd].completedRentCount/renterList[renteradd].totalRentCount * 100; //maximum 100 marks
+        renterList[renteradd].creditScore = renterList[renteradd].completedRentCount*100/renterList[renteradd].totalRentCount; //maximum 100 marks
+    
         
         // transfer deposit back to renter
         address payable recipient = address(uint160(renteradd));
-        uint256 dep = carList[rentList[rentId].carId].deposit;
-        uint256 commissionCharge = dep * commissionPercent / 100;
+        uint256 dep = rentList[rentId].deposit;
+        uint256 commissionCharge = get_total_rent_price(rentId) * commissionPercent / 100;
         recipient.transfer(dep - commissionCharge);
-
-        // update car owner completedRentCount also
-        address owneradd = rentList[rentId].carOwner;
-        carOwnerInfo[owneradd].completedRentCount ++;
-        carOwnerInfo[owneradd].totalRentCount ++;
-        carOwnerInfo[owneradd].creditScore = carOwnerInfo[owneradd].completedRentCount/carOwnerInfo[owneradd].totalRentCount * 100; //maximum 100 marks
-
 
         emit CarReturned(rentList[rentId].carId);
     } 
@@ -556,7 +561,9 @@ contract DecentralRent{
             startDate,
             endDate,
             offeredRate,
-            carList[carId].deposit
+            carList[carId].deposit,
+            false,
+            false
         );
         rentList[newrentId] = newRentInstance;
         request_submitted_dates[newrentId] = block.timestamp;
@@ -581,19 +588,19 @@ contract DecentralRent{
     }
 
     function accept_rental_offer(uint256 rentId) public payable registeredCarRenterOnly(msg.sender) requesterOnly(msg.sender, rentId) rentalInStatus(rentId, RentalStatus.Approved){
-        rent memory rentInstance = rentList[rentId];
+    
 
         // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
         // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
         // uint256 hoursElapsed = 3; //hardcoded first
-        uint256 hoursElapsed = (rentInstance.endDate - rentInstance.startDate) / (60 * 60); 
-        uint256 ethToPay = rentInstance.hourlyRentalRate * hoursElapsed + rentInstance.deposit;
+        uint256 hoursElapsed = (rentList[rentId].endDate - rentList[rentId].startDate) / (60 * 60); 
+        uint256 ethToPay = rentList[rentId].hourlyRentalRate * hoursElapsed + rentList[rentId].deposit;
         require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
 
-        rentInstance.rentalStatus = RentalStatus.Ongoing;        
+        rentList[rentId].rentalStatus = RentalStatus.Ongoing;        
 
-        emit RentalOfferAccepted(rentId, rentInstance.carId);
-        emit Notify_owner(rentInstance.carOwner);
+        emit RentalOfferAccepted(rentId, rentList[rentId].carId);
+        emit Notify_owner(rentList[rentId].carOwner);
 
         if (msg.value > ethToPay) {
             // transfer back remaining Eth
@@ -627,7 +634,7 @@ contract DecentralRent{
         emit RentRequestUpdated(rentId);
     }
     
-    function confirm_car_received(uint256 rentId) public payable rentalInStatus(rentId,RentalStatus.Approved) requesterOnly(msg.sender, rentId) carInStatus(rentList[rentId].carId, CarStatus.Available) {
+    function confirm_car_received(uint256 rentId) public payable rentalInStatus(rentId, RentalStatus.Ongoing) requesterOnly(msg.sender, rentId) carInStatus(rentList[rentId].carId, CarStatus.Available) {
         renterList[msg.sender].currentCars.push(rentList[rentId].carId);
         rentList[rentId].rentalStatus = RentalStatus.Ongoing;
         carList[rentList[rentId].carId].carStatus = CarStatus.Received;
@@ -645,9 +652,9 @@ contract DecentralRent{
     }
     
 /***************************** COMMON FUNCTIONS ********************************/
-    function renter_leave_rating(uint256 rentId, uint256 carConditionRating, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed){
+    function renter_leave_rating(uint256 rentId, uint256 carConditionDescription, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed){
         require(msg.sender == rentList[rentId].renter, "You are not involved in this rental.");
-        require(carConditionRating <= 5 && carConditionRating >=0, "Rating has to be between 0 and 5!");
+        require(carConditionDescription <= 5 && carConditionDescription >=0, "Rating has to be between 0 and 5!");
         require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
         require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
 
@@ -655,7 +662,7 @@ contract DecentralRent{
     
         address rater_address = rentList[rentId].carOwner;
         uint256 rating_count = carOwnerInfo[rater_address].ratingCount;
-        carOwnerInfo[rater_address].carConditionRating = (carOwnerInfo[rater_address].carConditionRating * rating_count + carConditionRating)/(rating_count + 1);
+        carOwnerInfo[rater_address].carConditionDescription= (carOwnerInfo[rater_address].carConditionDescription * rating_count + carConditionDescription)/(rating_count + 1);
         carOwnerInfo[rater_address].attitude = (carOwnerInfo[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
         carOwnerInfo[rater_address].responseSpeed = (carOwnerInfo[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
         carOwnerInfo[rater_address].ratingCount++;
@@ -663,17 +670,19 @@ contract DecentralRent{
         emit CarOwnerNewRating(rentId);
     } 
 
-    function owner_leave_rating(uint256 rentId, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed) {
+    function owner_leave_rating(uint256 rentId, uint256 carConditionMaintaining, uint256 attitude, uint256 responseSpeed) public rentalInStatus(rentId, RentalStatus.Completed) {
         require(msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
+        require(carConditionMaintaining <= 5 && carConditionMaintaining >=0, "Rating has to be between 0 and 5!");
         require(attitude <= 5 && attitude >=0, "Rating has to be between 0 and 5!");
         require(responseSpeed <= 5 && responseSpeed >=0, "Rating has to be between 0 and 5!");
 
-        address rater_address = rentList[rentId].renter;
-        uint256 rating_count = renterList[rater_address].ratingCount;
-        renterList[rater_address].attitude = (renterList[rater_address].attitude * rating_count + attitude)/(rating_count + 1);
-        renterList[rater_address].responseSpeed = (renterList[rater_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
-        renterList[rater_address].ratingCount++;
-        emit Notify_renter(rater_address);
+        address rated_address = rentList[rentId].renter;
+        uint256 rating_count = renterList[rated_address].ratingCount;
+        renterList[rated_address].carConditionMaintaining = (renterList[rated_address].carConditionMaintaining * rating_count + carConditionMaintaining)/(rating_count + 1);
+        renterList[rated_address].attitude = (renterList[rated_address].attitude * rating_count + attitude)/(rating_count + 1);
+        renterList[rated_address].responseSpeed = (renterList[rated_address].responseSpeed * rating_count + responseSpeed)/(rating_count + 1);
+        renterList[rated_address].ratingCount++;
+        emit Notify_renter(rated_address);
         emit RenterNewRating(rentId);
     }
 
@@ -702,35 +711,96 @@ contract DecentralRent{
         emit Notify_renter(currentRent.renter); 
     }
 
-    function support_team_transfer(uint256 issueId, uint256 amount, address recipientAddress) public payable supportTeamOnly(msg.sender) issueInStatus(issueId, IssueStatus.Created) {
+    function support_team_transfer(uint256 issueId, uint256 amount, address recipientAddress) public supportTeamOnly(msg.sender) {
         // issue status set to Solving to guard against re-entrancy attack 
-        issue memory issueInstance = issueList[issueId];
-        issueInstance.issueStatus = IssueStatus.Solving;
+        require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
+        issueList[issueId].issueStatus = IssueStatus.Solving;
+        uint256 rentId = issueList[issueId].rentId; 
 
-         address payable recipient = address(uint160(recipientAddress));
+        if (rentList[rentId].carOwner == recipientAddress) {
+            // if pay to car owner => deduct from deposit
+            rentList[rentId].deposit -= amount; 
+        }
+        address payable recipient = address(uint160(recipientAddress));
         recipient.transfer(amount);
     }
 
-    function resolve_issue(uint256 issueId, uint256 changeInCreditScore) public supportTeamOnly(msg.sender)  {
+    function update_credit_score(uint256 issueId, bool penaliseRenter, bool penaliseOwner) public supportTeamOnly(msg.sender) {
         require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
-        issue memory issueInstance = issueList[issueId];
-        issueInstance.issueStatus = IssueStatus.Solved;
+        issueList[issueId].issueStatus = IssueStatus.Solving;
 
-        rent memory currentRent = rentList[issueInstance.rentId];
-        address car_owner = currentRent.carOwner;
-        address car_renter = currentRent.renter;
-        address reporter = issueInstance.reporter;
+        uint256 rentId = issueList[issueId].rentId;
+        // update users' credit score 
+        address owneradd = rentList[rentId].carOwner;
+        if (penaliseOwner) {
+            rentList[rentId].penaliseOwner = true;
+        }
+        if(!rentList[rentId].penaliseOwner) {
+            carOwnerInfo[owneradd].completedRentCount ++;
+        }
+        carOwnerInfo[owneradd].totalRentCount ++;
+        carOwnerInfo[owneradd].creditScore = carOwnerInfo[owneradd].completedRentCount*100/carOwnerInfo[owneradd].totalRentCount; 
+        
+        address renteradd = rentList[rentId].renter;
+        if (penaliseRenter) {
+            rentList[rentId].penaliseRenter = true;
+        }
+        if(!rentList[rentId].penaliseRenter) {
+            renterList[renteradd].completedRentCount ++;
+        } 
+        renterList[renteradd].totalRentCount ++;
+        renterList[renteradd].creditScore = renterList[renteradd].completedRentCount*100/renterList[renteradd].totalRentCount; //maximum 100 marks
+    }
+
+    function update_rental_status(uint256 issueId, string memory rentalStatusString, string memory carStatusString) public supportTeamOnly(msg.sender) {
+        require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
+        issueList[issueId].issueStatus = IssueStatus.Solving;
+
+        uint256 rentId = issueList[issueId].rentId;
+        if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Registered'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Pending;
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Approved'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Approved;
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Rejected'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Rejected;
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Cancelled'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Cancelled;
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Ongoing'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Ongoing;
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Completed'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Completed;
+            carList[rentList[rentId].carId].rentHistory.push(rentId);
+        } else if (keccak256(abi.encodePacked(rentalStatusString)) == keccak256(abi.encodePacked('Abnormal'))) {
+            rentList[rentId].rentalStatus = RentalStatus.Abnormal;
+            carList[rentList[rentId].carId].rentHistory.push(rentId);
+        } 
+        
+        if (keccak256(abi.encodePacked(carStatusString)) == keccak256(abi.encodePacked('Registered'))) {
+            carList[rentList[rentId].carId].carStatus = CarStatus.Registered;
+        } else if (keccak256(abi.encodePacked(carStatusString)) == keccak256(abi.encodePacked('Available'))) {
+            carList[rentList[rentId].carId].carStatus = CarStatus.Available;
+        } else if (keccak256(abi.encodePacked(carStatusString)) == keccak256(abi.encodePacked('Received'))) {
+            carList[rentList[rentId].carId].carStatus = CarStatus.Received;
+        } else if (keccak256(abi.encodePacked(carStatusString)) == keccak256(abi.encodePacked('Abnormal'))) {
+            carList[rentList[rentId].carId].carStatus = CarStatus.Registered;
+        }
+
+    }
+
+    function resolve_issue(uint256 issueId, bool penaliseRenter, bool penaliseOwner) public supportTeamOnly(msg.sender)  {
+        
+        require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
+        issueList[issueId].issueStatus = IssueStatus.Solved;
+
+        rent memory currentRent = rentList[issueList[issueId].rentId];
 
         issue_resolved_dates[issueId] = block.timestamp;
 
-        if (reporter == car_owner) {
-            if (renterList[car_renter].creditScore - changeInCreditScore >= 0) {
-                renterList[car_renter].creditScore -= changeInCreditScore;
-            }
-        } else {
-            if (carOwnerInfo[car_owner].creditScore - changeInCreditScore >= 0) {
-                carOwnerInfo[car_owner].creditScore -= changeInCreditScore;
-            }
+        if (penaliseOwner) {
+            rentList[issueList[issueId].rentId].penaliseOwner = true;
+        }
+        if (penaliseRenter) {
+            rentList[issueList[issueId].rentId].penaliseRenter = true;
         }
 
         emit Notify_owner(currentRent.carOwner);
@@ -738,10 +808,9 @@ contract DecentralRent{
         emit IssueResolved(issueId);
     }
 
-    function reject_issue(uint256 issueId) public view {
+    function reject_issue(uint256 issueId) public {
         require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
-        issue memory issueInstance = issueList[issueId];
-        issueInstance.issueStatus = IssueStatus.Rejected;
+        issueList[issueId].issueStatus = IssueStatus.Rejected;
     }
 
     //only used for testing purposes
@@ -859,8 +928,8 @@ contract DecentralRent{
         return block.timestamp;
     }
 
-    function get_owner_car_condition_rating(address user_address) public view returns (uint256) {
-        return carOwnerInfo[user_address].carConditionRating;
+    function get_owner_car_condition_description(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].carConditionDescription;
     }
 
     function get_owner_attitude(address user_address) public view returns (uint256) {
@@ -871,12 +940,24 @@ contract DecentralRent{
         return carOwnerInfo[user_address].responseSpeed;
     }
 
+    function get_renter_car_condition_maintaining(address user_address) public view returns (uint256) {
+        return renterList[user_address].carConditionMaintaining;
+    }
+
     function get_renter_attitude(address user_address) public view returns (uint256) {
         return renterList[user_address].attitude;
     }
 
     function get_renter_response_speed(address user_address) public view returns (uint256) {
         return renterList[user_address].responseSpeed;
+    }
+
+    function get_owner_total_rent_count(address user_address) public view returns (uint256) {
+        return carOwnerInfo[user_address].totalRentCount;
+    }
+
+    function get_renter_total_rent_count(address user_address) public view returns (uint256) {
+        return renterList[user_address].totalRentCount;
     }
 
     function get_owner_credit_score(address user_address) public view returns (uint256) {
@@ -927,7 +1008,6 @@ contract DecentralRent{
         return carList[carId].owner;
     }
 
-
     function get_car_requested_rent_IDs(uint256 carId) public view returns(uint256[] memory) {
         return carList[carId].requestedrentIdList;
     }
@@ -944,11 +1024,10 @@ contract DecentralRent{
         CarStatus temp = carList[carId].carStatus;
         if (temp == CarStatus.Registered) return "Registered";
         if (temp == CarStatus.Available) return "Available";
-        if (temp == CarStatus.Reserved) return "Reserved";
         if (temp == CarStatus.Received) return "Received";
-        if (temp == CarStatus.Unavailable) return "Unavailable";
         if (temp == CarStatus.Abnormal) return "Abnormal";
     }
+
 
     function get_rent_status_toString(uint256 rentId) public view returns (string memory){
         RentalStatus temp = rentList[rentId].rentalStatus;
@@ -982,8 +1061,16 @@ contract DecentralRent{
         return rentList[rentId].renter;
     }
 
+    function get_rent_car_owner(uint256 rentId) public view returns(address) {
+        return rentList[rentId].carOwner;
+    }
+
     function get_rent_status(uint256 rentId) public view returns(RentalStatus) {
         return rentList[rentId].rentalStatus;
+    }
+
+    function get_issue_rentId(uint256 issueId) public view returns(uint256) {
+        return issueList[issueId].rentId;
     }
 
     function get_issue_details(uint256 issueId) public view returns(string memory) {
@@ -1010,6 +1097,14 @@ contract DecentralRent{
     function renter_get_my_issues() public view verifiedRenterOnly(msg.sender) returns(uint256[] memory) {
         // only verified renter can call this function
         return renterList[msg.sender].issueList;
+    }
+
+    function get_platform_fee() public view returns(uint256) {
+        return platformFee;
+    }
+
+    function get_commission_percent() public view returns(uint256) {
+        return commissionPercent;
     }
 
     /* function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
