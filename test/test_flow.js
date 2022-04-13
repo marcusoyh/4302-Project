@@ -5,8 +5,12 @@ var assert = require('assert');
 
 const DecentralRent = artifacts.require("../contracts/DecentralRent.sol");
 
+
+// This test files tests for different flows of user stories.
+
+
 contract('DecentralRentFlows', function(accounts) {
-    let contractOwnerAddress = accounts[1];
+    let contractOwnerAddress = accounts[0];
     let carOwnerAddress1 = accounts[2];
     let renterAddress1 = accounts[3];
     let renterAddress2 = accounts[4];
@@ -22,11 +26,7 @@ contract('DecentralRentFlows', function(accounts) {
     let car1Deposit;
     let car2Deposit;
     let car3Deposit;
-    let car4Deposit;
-    let car5Deposit;
-    let car6Deposit;
     let carCondition = 10;
-    let decentralRentEthBalance;
 
 
     before(async() => {
@@ -36,7 +36,8 @@ contract('DecentralRentFlows', function(accounts) {
     it('1. Typical User Journey', async() => {
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
-        console.log("Flow of typical user journey start.");
+        console.log("=======================================================================================");
+        console.log("-**-Flow of typical user journey start.-**-");
 
         // owner 1, renter 1 & 2, car 1, rent 1 & 2
 
@@ -49,7 +50,6 @@ contract('DecentralRentFlows', function(accounts) {
         let carRenterRegistration1 = await decentralRentInstance.register_car_renter({ from: renterAddress1 });
         truffleAssert.eventEmitted(carRenterRegistration1, 'RenterRegistered');
         console.log("Renter1 registered.");
-
 
         let carRenterRegistration2 = await decentralRentInstance.register_car_renter({ from: renterAddress2 });
         truffleAssert.eventEmitted(carRenterRegistration2, 'RenterRegistered');
@@ -92,14 +92,6 @@ contract('DecentralRentFlows', function(accounts) {
 
 
 
-        // Renter 1 updated his request
-        let newOfferedRate = 40;
-        let updatedCarRentalRequest = await decentralRentInstance.update_rental_request(1, startDate, endDate, newOfferedRate, { from: renterAddress1 });
-        truffleAssert.eventEmitted(updatedCarRentalRequest, "RentRequestUpdated");
-        console.log("RentRequest1 updated by renter1.");
-
-
-
         // Renter 2 apply for car 1
         let request2 = await decentralRentInstance.submit_rental_request_with_offer(1, startDate, endDate, 20, { from: renterAddress2 });
         truffleAssert.eventEmitted(request2,
@@ -114,6 +106,14 @@ contract('DecentralRentFlows', function(accounts) {
             "The rental status should be in pending"
         );
         console.log("RentRequest2 for car1 submitted by renter2.");
+
+
+
+        // Renter 1 updated his request
+        let newOfferedRate = 20;
+        let updatedCarRentalRequest = await decentralRentInstance.update_rental_request(1, startDate, endDate, newOfferedRate, { from: renterAddress1 });
+        truffleAssert.eventEmitted(updatedCarRentalRequest, "RentRequestUpdated");
+        console.log("RentRequest1 updated by renter1.");
 
 
 
@@ -200,9 +200,9 @@ contract('DecentralRentFlows', function(accounts) {
 
         // Owner 1 confirms car return. 
         let renterBalanceBefore = await web3.eth.getBalance(renterAddress1);
-        //error here 206 'exit with error code 0'
-        let confirmCarReturned1 = await decentralRentInstance.confirm_car_returned(1, { from: carOwnerAddress1 });
-        truffleAssert.eventEmitted(confirmCarReturned1, 'CarReturned');
+
+        let confirmCarReturned = await decentralRentInstance.confirm_car_returned(1, { from: carOwnerAddress1 });
+        truffleAssert.eventEmitted(confirmCarReturned, 'CarReturned');
         assert.strictEqual(
             await decentralRentInstance.get_car_status_toString(1),
             "Available",
@@ -226,33 +226,116 @@ contract('DecentralRentFlows', function(accounts) {
         );
         console.log("RentRequest1 deposit refunded to renter1. Commission fee charged.");
 
-        // Contract owner withdraws the profit
-        let contractOwnerBalanceBefore = await web3.eth.getBalance(contractOwnerAddress);
-        await decentralRentInstance.withdraw_profit(platformFee + 2 * commissionCharge);
-        let contractOwnerBalanceAfter = await web3.eth.getBalance(contractOwnerAddress);
-        let contractOwnerBalanceIncrease = BigInt(contractOwnerBalanceAfter) - BigInt(contractOwnerBalanceBefore);
-        assert.strictEqual(
-            Number(contractOwnerBalanceIncrease),
-            platformFee + 2 * commissionCharge,
-            'Contract owner did not receive correct amount of profit withdrawn'
-        );
-        console.log("Contract owner withdrew profit from contract.");
 
-        console.log("Flow of typical user journey end.");
+
+        // Renter 1 leave rating for owner 1
+        // checking rating values before
+        let ownerCarConditionDescriptionBefore = await decentralRentInstance.get_owner_car_condition_description(carOwnerAddress1);
+        let ownerAttitudeBefore = await decentralRentInstance.get_owner_attitude(carOwnerAddress1);
+        let ownerResponseSpeedBefore = await decentralRentInstance.get_owner_response_speed(carOwnerAddress1);
+        let ownerRatingCountBefore = await decentralRentInstance.get_owner_rating_count(carOwnerAddress1);
+        let carConditionDescriptionToLeave = 5;
+        let attitudeToLeave = 5;
+        let responseSpeedToLeave = 5
+
+        // leaving rating
+        let leaveRatingForOwner1 = await decentralRentInstance.renter_leave_rating(1, carConditionDescriptionToLeave, attitudeToLeave, responseSpeedToLeave, { from: renterAddress1 });
+        let ownerCarConditionDescriptionAfter = await decentralRentInstance.get_owner_car_condition_description(carOwnerAddress1);
+        let ownerAttitudeAfter = await decentralRentInstance.get_owner_attitude(carOwnerAddress1);
+        let ownerResponseSpeedAfter = await decentralRentInstance.get_owner_response_speed(carOwnerAddress1);
+
+        // checking rating values after
+        let expectedCarConditionDescriptionAfter = (ownerCarConditionDescriptionBefore.toNumber() * ownerRatingCountBefore.toNumber() + carConditionDescriptionToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+        let expectedAttitudeAfter = (ownerAttitudeBefore.toNumber() * ownerRatingCountBefore.toNumber() + attitudeToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+        let expectedResponseSpeedAfter = (ownerResponseSpeedBefore.toNumber() * ownerRatingCountBefore.toNumber() + responseSpeedToLeave) / (ownerRatingCountBefore.toNumber() + 1);
+
+        // checking values
+        assert.strictEqual(
+            ownerCarConditionDescriptionAfter.toNumber(),
+            expectedCarConditionDescriptionAfter,
+            'Owner 1 rating did not change as expected'
+        );
+        assert.strictEqual(
+            ownerAttitudeAfter.toNumber(),
+            expectedAttitudeAfter,
+            'Owner 1 rating did not change as expected'
+        );
+        assert.strictEqual(
+            ownerResponseSpeedAfter.toNumber(),
+            expectedResponseSpeedAfter,
+            'Owner 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'CarOwnerNewRating');
+        truffleAssert.eventEmitted(leaveRatingForOwner1, 'Notify_owner');
+        console.log("Renter1 left rating for carOwner1.");
+
+
+
+        // Owner 1 leave rating for renter 1
+        // checking rating values before
+        let renterCarConditionMaintainingBefore = await decentralRentInstance.get_renter_car_condition_maintaining(renterAddress1);
+        let renterAttitudeBefore = await decentralRentInstance.get_renter_attitude(renterAddress1);
+        let renterResponseSpeedBefore = await decentralRentInstance.get_renter_response_speed(renterAddress1);
+        let renterRatingCountBefore = await decentralRentInstance.get_renter_rating_count(renterAddress1);
+        let carConditionMaintainingToLeave = 5;
+        let attitudeToLeave1 = 5;
+        let responseSpeedToLeave1 = 5;
+
+        // leaving rating
+        let leaveRatingForRenter1 = await decentralRentInstance.owner_leave_rating(1, carConditionMaintainingToLeave, attitudeToLeave1, responseSpeedToLeave1, { from: carOwnerAddress1 });
+
+        // checking rating values after
+        let renterCarConditionMaintainingAfter = await decentralRentInstance.get_renter_car_condition_maintaining(renterAddress1);
+        let renterAttitudeAfter = await decentralRentInstance.get_renter_attitude(renterAddress1);
+        let renterResponseSpeedAfter = await decentralRentInstance.get_renter_response_speed(renterAddress1);
+
+        let expectedCarConditionMaintainingAfter = (renterCarConditionMaintainingBefore.toNumber() * renterRatingCountBefore.toNumber() + carConditionMaintainingToLeave) / (renterRatingCountBefore.toNumber() + 1);
+        let expectedAttitudeAfter1 = (renterAttitudeBefore.toNumber() * renterRatingCountBefore.toNumber() + attitudeToLeave) / (renterRatingCountBefore.toNumber() + 1);
+        let expectedResponseSpeedAfter1 = (renterResponseSpeedBefore.toNumber() * renterRatingCountBefore.toNumber() + responseSpeedToLeave) / (renterRatingCountBefore.toNumber() + 1);
+
+        // checking values
+        assert.strictEqual(
+            expectedCarConditionMaintainingAfter,
+            renterCarConditionMaintainingAfter.toNumber(),
+            'Car Renter 1 rating did not change as expected'
+        );
+        assert.strictEqual(
+            renterAttitudeAfter.toNumber(),
+            expectedAttitudeAfter1,
+            'Car Renter 1 rating did not change as expected'
+        );
+        assert.strictEqual(
+            renterResponseSpeedAfter.toNumber(),
+            expectedResponseSpeedAfter1,
+            'Car Renter 1 rating did not change as expected'
+        );
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'RenterNewRating');
+        truffleAssert.eventEmitted(leaveRatingForRenter1, 'Notify_renter');
+        console.log("CarOwner1 left rating for renter1.");
+
+        console.log("-**-Flow of typical user journey end.-**-");
     });
+
 
     it('2. Issue Flow -> renter never return car', async() => {
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
-        console.log("Issue flow of renter not returning car start.");
+        console.log("=======================================================================================");
+        console.log("-**-Issue flow of renter not returning car start.-**-");
 
         // owner 1, renter 3, car 2, rent 3, issue 1
+        // renter 3 register 
+        let carRenterRegistration3 = await decentralRentInstance.register_car_renter({ from: renterAddress3 });
+        truffleAssert.eventEmitted(carRenterRegistration3, 'RenterRegistered');
+        console.log("Renter3 registered")
+
         // Owner 1 register car 2
         let car2 = await decentralRentInstance.register_car("mazda", "car2", "image1", "image2", "image3", { from: carOwnerAddress1 });
         truffleAssert.eventEmitted(car2, "CarRegistered")
 
         let car2Status = await decentralRentInstance.get_car_status_toString(2);
         assert.strictEqual(car2Status, "Registered", "Car registeration failed");
+        console.log("Car2 registered by carOwner1");
 
         // Owner 1 list car 2
         let car2Listing = await decentralRentInstance.list_car_for_rental(2, "collectionPoint", hourlyRentalRate, deposit, carCondition, { from: carOwnerAddress1, value: platformFee });
@@ -261,10 +344,7 @@ contract('DecentralRentFlows', function(accounts) {
 
         let car2NewStatus = await decentralRentInstance.get_car_status_toString(2);
         assert.strictEqual(car2NewStatus, "Available", "Car listing failed");
-
-        // renter 3 register 
-        let carRenterRegistration3 = await decentralRentInstance.register_car_renter({ from: renterAddress3 });
-        truffleAssert.eventEmitted(carRenterRegistration3, 'RenterRegistered');
+        console.log("Car2 listed by carOwner1");
 
         // Renter 3 apply for car 2 
         let request3 = await decentralRentInstance.submit_rental_request_with_offer(2, startDate, endDate, 20, { from: renterAddress3 });
@@ -279,6 +359,7 @@ contract('DecentralRentFlows', function(accounts) {
             "Pending",
             "The rental status should be in pending"
         );
+        console.log("RentRequest3 for car2 submitted by renter3");
 
         // Owner 1 approves rent 3
         let approval3 = await decentralRentInstance.approve_rental_request(3, { from: carOwnerAddress1 });
@@ -288,6 +369,7 @@ contract('DecentralRentFlows', function(accounts) {
             "Approved",
             "The status of the rent whould be changed to 'Approved'"
         );
+        console.log("RentRequest3 approved by carOwner1");
 
         // Renter 3 accepts offer
         let rentalPrice3 = await decentralRentInstance.get_total_rent_price(3);
@@ -297,6 +379,7 @@ contract('DecentralRentFlows', function(accounts) {
 
         truffleAssert.eventEmitted(acceptRental3, 'RentalOfferAccepted');
         truffleAssert.eventEmitted(acceptRental3, 'Notify_owner');
+        console.log("RentRequest3 offer accepted by renter3");
 
         // Renter 3 confirms the car received 
         // Checking owner balance before
@@ -319,19 +402,19 @@ contract('DecentralRentFlows', function(accounts) {
             finalRentalPrice,
             'Car Owner 1 did not receive correct eth amount'
         );
+        console.log("RentRequest3 car2 received by renter3.");
 
         // Owner 1 report issue - nv return car 
         let reportIssue1 = await decentralRentInstance.report_issue(3, "never return car", "88888888", "sudoUrl", { from: carOwnerAddress1 })
         truffleAssert.eventEmitted(reportIssue1, 'IssueReported');
         truffleAssert.eventEmitted(reportIssue1, 'Notify_owner');
         truffleAssert.eventEmitted(reportIssue1, 'Notify_renter');
+        console.log("Issue1 submitted by carOwner1 for never return car.");
 
         // Support team resolve issue and terminate rent, update car and rent status
 
         // support team will chase for car return offline and make sure the car is properly returned, then proceed to handle rent closure
         // penalise renter for not returning car
-        let penaliseOwner = false;
-        let penaliseRenter = true;
 
         let renterTotalRentCount = await decentralRentInstance.get_renter_total_rent_count(renterAddress3);
         let renterSuccessfulRentCount = await decentralRentInstance.get_renter_completed_rent_count(renterAddress3);
@@ -343,7 +426,7 @@ contract('DecentralRentFlows', function(accounts) {
 
         // support team update credit score，rental status and car status
         // issue id 1
-        await decentralRentInstance.penalise_credit_score(1, 'renter', { from: accounts[1] });
+        await decentralRentInstance.penalty_log(1, 'renter', { from: accounts[1] });
         await decentralRentInstance.update_rental_status(1, 'Abnormal', 'Available', { from: accounts[1] });
         let resolveIssue1 = await decentralRentInstance.resolve_issue(1, { from: accounts[1] });
 
@@ -365,22 +448,31 @@ contract('DecentralRentFlows', function(accounts) {
         truffleAssert.eventEmitted(resolveIssue1, 'IssueResolved');
         truffleAssert.eventEmitted(resolveIssue1, 'Notify_owner');
         truffleAssert.eventEmitted(resolveIssue1, 'Notify_renter');
+        console.log("Support team resolved issue1, adds penalty log for renter3");
+        console.log("Support team updates rental status and car status to close the rent");
 
-        console.log("Issue flow of renter not returning car end.");
+        console.log("-**-Issue flow of renter not returning car end.-**-");
     });
 
     it('3. Issue Flow -> renter never receive car + renter scratch car + reopen issue', async() => {
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
-        console.log("Issue flow of renter not receiving car & scratch car start.");
+        console.log("=======================================================================================");
+        console.log("-**-Issue flow of renter not receiving car & scratch car start.-**-");
 
         // owner 1, renter 4, car 3, rent 4, issue 2
+
+        // Car renter 4 register
+        let carRenterRegistration4 = await decentralRentInstance.register_car_renter({ from: renterAddress4 });
+        truffleAssert.eventEmitted(carRenterRegistration4, 'RenterRegistered');
+        console.log("Renter4 registered.");
+
         // Owner 1 register car 3 
         let car3 = await decentralRentInstance.register_car("honda", "car3", "image1", "image2", "image3", { from: carOwnerAddress1 });
         truffleAssert.eventEmitted(car3, "CarRegistered")
-
         let car3Status = await decentralRentInstance.get_car_status_toString(3);
         assert.strictEqual(car3Status, "Registered", "Car registeration failed");
+        console.log("Car3 registered by carOwner1.");
 
         // Owner 1 list car 3
         let car3Listing = await decentralRentInstance.list_car_for_rental(3, "collectionPoint", hourlyRentalRate, deposit, carCondition, { from: carOwnerAddress1, value: platformFee });
@@ -389,10 +481,8 @@ contract('DecentralRentFlows', function(accounts) {
 
         let car3NewStatus = await decentralRentInstance.get_car_status_toString(3);
         assert.strictEqual(car3NewStatus, "Available", "Car listing failed");
+        console.log("Car3 listed by carOwner1.");
 
-        // Car renter 4 register
-        let carRenterRegistration4 = await decentralRentInstance.register_car_renter({ from: renterAddress4 });
-        truffleAssert.eventEmitted(carRenterRegistration4, 'RenterRegistered');
 
         // Renter 4 apply for car 3 
         let request4 = await decentralRentInstance.submit_rental_request_with_offer(3, startDate, endDate, 20, { from: renterAddress4 });
@@ -407,6 +497,8 @@ contract('DecentralRentFlows', function(accounts) {
             "Pending",
             "The rental status should be in pending"
         );
+        console.log("RentRequest4 for car1 submitted by renter4.");
+
 
         // Owner 1 approves rent 4
         let approval4 = await decentralRentInstance.approve_rental_request(4, { from: carOwnerAddress1 });
@@ -416,6 +508,8 @@ contract('DecentralRentFlows', function(accounts) {
             "Approved",
             "The status of the rent whould be changed to 'Approved'"
         );
+        console.log("RentRequest4 approved by carOwner1.")
+
 
         // Renter 4 accepts offer
         let rentalPrice4 = await decentralRentInstance.get_total_rent_price(4);
@@ -425,70 +519,49 @@ contract('DecentralRentFlows', function(accounts) {
 
         truffleAssert.eventEmitted(acceptRental4, 'RentalOfferAccepted');
         truffleAssert.eventEmitted(acceptRental4, 'Notify_owner');
+        console.log("RentRequest4 offer accepted by renter4.");
+        console.log("Renter4 transfered correct deposit + rent to contract.");
 
+        // issue id 2
         // Renter 4 report never receive car 
         let reportIssue2 = await decentralRentInstance.report_issue(4, "never receive car", "88888888", "sudoUrl", { from: renterAddress4 })
         truffleAssert.eventEmitted(reportIssue2, 'IssueReported');
         truffleAssert.eventEmitted(reportIssue2, 'Notify_owner');
         truffleAssert.eventEmitted(reportIssue2, 'Notify_renter');
+        console.log("Issue2 submitted by renter4 for never receiving car.");
+
 
         // Support team resolve
-        // issue id 2
-        let penaliseRenter = false;
-        let penaliseOwner = true;
-
-        let renterTotalRentCount = await decentralRentInstance.get_renter_total_rent_count(renterAddress4);
-        let renterSuccessfulRentCount = await decentralRentInstance.get_renter_completed_rent_count(renterAddress4);
-        let renterExpectedScoreAfter = Math.floor((renterSuccessfulRentCount.toNumber() + 1) / (renterTotalRentCount.toNumber() + 1) * 100);
-
-        let ownerTotalRentCount = await decentralRentInstance.get_owner_total_rent_count(carOwnerAddress1);
-        let ownerSuccessfulRentCount = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
-
-        let ownerExpectedScoreAfter = Math.floor(ownerSuccessfulRentCount.toNumber() / (ownerTotalRentCount.toNumber() + 1) * 100);
-
-        // support team will chase the owner to deliver car, then update credit score, rental and car status
-        // penalise owner credit score, rental ongoing, car received
-
-        await decentralRentInstance.penalise_credit_score(2, 'owner', { from: accounts[1] });
-        //await decentralRentInstance.update_rental_status(2, 'Ongoing', 'Received', { from: accounts[1] });
+        // support team will chase the owner to deliver car, record penalty log
+        await decentralRentInstance.penalty_log(2, 'owner', { from: accounts[1] });
         let resolveIssue2 = await decentralRentInstance.resolve_issue(2, { from: accounts[1] });
+        await decentralRentInstance.confirm_car_received(4, { from: renterAddress4 });
+        console.log("Support team resolved issue2, added penalty log for owner1.");
+        console.log("RentRequest4 car3 received by renter4.");
 
-        let renterCreditScoreAfter = await decentralRentInstance.get_renter_credit_score(renterAddress4);
-        let ownerCreditScoreAfter = await decentralRentInstance.get_owner_credit_score(carOwnerAddress1);
-
-        assert.strictEqual(
-            ownerCreditScoreAfter.toNumber(),
-            ownerExpectedScoreAfter,
-            'Car Owner 1 credit score did not change as expected'
-        );
-
-        assert.strictEqual(
-            renterCreditScoreAfter.toNumber(),
-            renterExpectedScoreAfter,
-            'Car Renter 4 credit score did not change as expected'
-        );
 
         truffleAssert.eventEmitted(resolveIssue2, 'IssueResolved');
         truffleAssert.eventEmitted(resolveIssue2, 'Notify_owner');
         truffleAssert.eventEmitted(resolveIssue2, 'Notify_renter');
 
+
         // Renter 4 reopen issue -> car scratched 
-        let reopenIssue2 = await decentralRentInstance.reopen_issue(2, 'car scratched', { from: renterAddress3 });
+        let reopenIssue2 = await decentralRentInstance.reopen_issue(2, 'car scratched', { from: renterAddress4 });
 
         truffleAssert.eventEmitted(reopenIssue2, 'IssueReopened');
         truffleAssert.eventEmitted(reopenIssue2, 'Notify_owner');
         truffleAssert.eventEmitted(reopenIssue2, 'Notify_renter');
+        console.log("Renter4 reopened issue2 for scratching.");
 
         // Support team resolve issue
-        let penaliseOwner2 = false;
-        let penaliseRenter2 = true;
         let amount = 2;
         let rentId = await decentralRentInstance.get_issue_rentId(2);
         let ownerAddress = await decentralRentInstance.get_rent_car_owner(rentId);
 
         let ownerBalanceBefore = await web3.eth.getBalance(ownerAddress);
 
-        // penalise from deposit
+        // penalise from deposit, record penalty log
+        await decentralRentInstance.penalty_log(2, 'renter', { from: accounts[1] });
         await decentralRentInstance.support_team_transfer(2, amount, ownerAddress, { from: accounts[1] })
         let resolveIssue3 = await decentralRentInstance.resolve_issue(2, { from: accounts[1] });
 
@@ -504,18 +577,50 @@ contract('DecentralRentFlows', function(accounts) {
         truffleAssert.eventEmitted(resolveIssue3, 'IssueResolved');
         truffleAssert.eventEmitted(resolveIssue3, 'Notify_owner');
         truffleAssert.eventEmitted(resolveIssue3, 'Notify_renter');
+        console.log("Support team resolved issue2, added penalty log for renter4.");
+
         // Renter 4 reopen issue after 7 days -> unsuccessful 
         await decentralRentInstance.revert_issue_resolved_date_by_7day(2);
         await truffleAssert.reverts(decentralRentInstance.reopen_issue(2, 'car scratched', { from: renterAddress4 }), "you can only reopen an issue within 7 days after it is resolved");
-        // Owner 1 confirms receive car 
+        console.log("Renter4 wanted to reopen issue2 after 7 days but failed.");
 
-        console.log("Issue flow of renter not receiving car & scratch car end.");
+        // calculate expected score 
+        let renterTotalRentCount = await decentralRentInstance.get_renter_total_rent_count(renterAddress4);
+        let renterSuccessfulRentCount = await decentralRentInstance.get_renter_completed_rent_count(renterAddress4);
+        let renterExpectedScoreAfter = Math.floor(renterSuccessfulRentCount.toNumber() / (renterTotalRentCount.toNumber() + 1) * 100);
+
+        let ownerTotalRentCount = await decentralRentInstance.get_owner_total_rent_count(carOwnerAddress1);
+        let ownerSuccessfulRentCount = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
+        let ownerExpectedScoreAfter = Math.floor((ownerSuccessfulRentCount.toNumber()) / (ownerTotalRentCount.toNumber() + 1) * 100);
+
+        // Owner 1 confirms car returned at the end of rent
+        await decentralRentInstance.confirm_car_returned(4, { from: carOwnerAddress1 });
+        console.log("RentRequest4 car3 returned to carOwner1.")
+
+        let renterCreditScoreAfter = await decentralRentInstance.get_renter_credit_score(renterAddress4);
+        let ownerCreditScoreAfter = await decentralRentInstance.get_owner_credit_score(carOwnerAddress1);
+
+
+        assert.strictEqual(
+            ownerCreditScoreAfter.toNumber(),
+            ownerExpectedScoreAfter,
+            'Car Owner 1 credit score did not change as expected'
+        );
+
+        assert.strictEqual(
+            renterCreditScoreAfter.toNumber(),
+            renterExpectedScoreAfter,
+            'Car Renter 4 credit score did not change as expected'
+        );
+
+        console.log("-**-Issue flow of renter not receiving car & scratch car end.-**-");
     });
 
     it('4. Car Owner Approve Rental Request then Recall Flow', async() => {
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
-        console.log("Flow of offer recallment start.");
+        console.log("=======================================================================================");
+        console.log("-**-Flow of offer recallment start.-**-");
 
         // Register renter 5
         let carRenterRegistration5 = await decentralRentInstance.register_car_renter({ from: renterAddress5 });
@@ -603,13 +708,14 @@ contract('DecentralRentFlows', function(accounts) {
             "The status of the car is not changed to 'Available'"
         );
         console.log("RentRequest5 offer recalled by carOwner1 after 24h.");
-        console.log("Flow of offer recallment end.");
+        console.log("-**-Flow of offer recallment end.-**-");
     });
 
     it('5. Recall Flow', async() => {
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
-        console.log("Flow of renter recall rental request start.");
+        console.log("=======================================================================================");
+        console.log("-**-Flow of renter recall rental request start.-**-");
 
         // Register renter 6 and 7 
         let carRenterRegistration6 = await decentralRentInstance.register_car_renter({ from: renterAddress6 });
@@ -729,6 +835,6 @@ contract('DecentralRentFlows', function(accounts) {
         truffleAssert.eventEmitted(approval8, 'RentalOfferApproved');
         console.log("RentRequest8 approved by carOwner1.");
 
-        console.log("Flow of renter recall rental request end.");
+        console.log("-**-Flow of renter recall rental request end.-**-");
     });
 })

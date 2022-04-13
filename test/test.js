@@ -5,13 +5,9 @@ const { strictEqual } = require("assert");
 
 const DecentralRent = artifacts.require("../contracts/DecentralRent.sol");
 
-/* ACCOUNT IDENTITIES 
-accounts[1] from 2_deploy_contracts -> support_team (from 2_deploy_contracts)
-accounts[2] -> carOwnerAddress1
-accounts[3] -> carOwnerAddress2
-accounts[4] -> renterAddress1
-accounts[5] -> renterAddress2
-*/
+
+// This test files tests for individual features and their variations.
+
 
 contract('DecentralRent', function(accounts) {
     let carOwnerAddress1 = accounts[2];
@@ -27,8 +23,6 @@ contract('DecentralRent', function(accounts) {
     let car1Deposit;
     let car2Deposit;
     let car3Deposit;
-    let car4Deposit;
-    let car5Deposit;
     let carCondition = 10;
     let amountToPayForRental1;
     let amountToPayForRental2;
@@ -220,12 +214,12 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('8a. Test for unsuccessful rental update request(Can only be done by car renter that submit the request)', async() => {
-        let newOfferedRate = 40;
+        let newOfferedRate = 20;
         await truffleAssert.reverts(decentralRentInstance.update_rental_request(2, startDate, endDate, newOfferedRate, { from: renterAddress1 }), "You are not the owner of this rental request.");
     });
 
     it('8b. Test for successful rental update request(Can only be done by car renter that submit the request)', async() => {
-        let newOfferedRate = 40;
+        let newOfferedRate = 20;
 
         let car2Status = await decentralRentInstance.get_car_status_toString(2);
         assert.strictEqual(car2Status, "Available", "Car is not available");
@@ -247,7 +241,7 @@ contract('DecentralRent', function(accounts) {
 
 
     it('10a. Test for unsuccessful rental request approval (only car owner can approve)', async() => {
-        //fail as carOwnerAddress2 does not own car(car1) that is involved in rent1
+        // fail as carOwnerAddress2 does not own car(car1) that is involved in rent1
         await truffleAssert.reverts(decentralRentInstance.approve_rental_request(1, { from: carOwnerAddress2 }), "only verified car owner can perform this action");
     });
 
@@ -271,7 +265,7 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('10c. Test for unsuccessful rental request approval (previous acceptance of rental request in the same period)', async() => {
-        //Request3 and Request4 asks for the same car in the same period. After request 3 has already been approved, Request4 cannot be accepted again.
+        // Request3 and Request4 asks for the same car in the same period. After request 3 has already been approved, Request4 cannot be accepted again.
         let request3 = await decentralRentInstance.submit_rental_request_with_offer(3, startDate, endDate, 30, { from: renterAddress2 });
         truffleAssert.eventEmitted(request3, 'RentalRequestedSubmitted', (ev) => {
             return ev.renter_address === renterAddress2;
@@ -295,7 +289,6 @@ contract('DecentralRent', function(accounts) {
 
         await truffleAssert.reverts(decentralRentInstance.approve_rental_request(4, { from: carOwnerAddress2 }), "you have already approved for this time period");
 
-        // await decentralRentInstance.approve_rental_request(2, { from: carOwnerAddress2 });
     });
 
     it('11a. Test for unsuccessful rental request rejection (not the car owner)', async() => {
@@ -304,12 +297,7 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('11b. Test for successful rental request rejection (previous acceptance of rental request in the same period)', async() => {
-        // console.log(rentId.toNumber());
-        // console.log()
-        // console.log(rentId.toNumber());
-        // console.log(await decentralRentInstance.get_rent_carId.call(rentId.toNumber()).toString());
-        // console.log(carOwnerAddress2);
-        // await 
+
         let rejection1 = await decentralRentInstance.reject_rental_request(5, { from: carOwnerAddress2 });
         truffleAssert.eventEmitted(rejection1, 'RentalRequestRejected');
         assert.strictEqual(
@@ -317,7 +305,6 @@ contract('DecentralRent', function(accounts) {
             "Rejected",
             "The status of the rent whould be changed to 'Rejected'"
         );
-        //to submit another request after rejection
     });
 
     it('12a.Test for unsuccessful rental approval recallment (less than 24h since passing since approval)', async() => {
@@ -483,7 +470,6 @@ contract('DecentralRent', function(accounts) {
 
     it('17b. Test successful confirmation that car is returned (Car Owner 1), with Eth transfer and updated rent count', async() => {
 
-        // rent 1, owner 1, renter 1, car 1
         // Checking rent counts before the rental
         let ownerCompletedRentCountBefore = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress1);
         let renterCompletedRentCountBefore = await decentralRentInstance.get_renter_completed_rent_count(renterAddress1);
@@ -673,7 +659,7 @@ contract('DecentralRent', function(accounts) {
         let ownerSuccessfulRentCount = await decentralRentInstance.get_owner_completed_rent_count(carOwnerAddress2);
         let ownerExpectedScoreAfter = Math.floor((ownerSuccessfulRentCount.toNumber() + 1) / (ownerTotalRentCount.toNumber() + 1) * 100);
 
-        await decentralRentInstance.penalise_credit_score(1, 'renter', { from: accounts[1] });
+        await decentralRentInstance.penalty_log(1, 'renter', { from: accounts[1] });
         // support team manually chase for car offline, and update status
         await decentralRentInstance.update_rental_status(1, 'Abnormal', 'Available', { from: accounts[1] });
         let resolveIssue1 = await decentralRentInstance.resolve_issue(1, { from: accounts[1] });
@@ -730,7 +716,7 @@ contract('DecentralRent', function(accounts) {
     it('22b. Test support team resolve issue (penalize owner)', async() => {
         // issue id 2
         // penalise owner
-        await decentralRentInstance.penalise_credit_score(2, 'owner', { from: accounts[1] });
+        await decentralRentInstance.penalty_log(2, 'owner', { from: accounts[1] });
         // support team manually chase owner for car. Then after renter receives it, he confirms
         await decentralRentInstance.confirm_car_received(6, { from: renterAddress3 });
 
@@ -769,7 +755,7 @@ contract('DecentralRent', function(accounts) {
 
         // penalise from deposit
         await decentralRentInstance.support_team_transfer(2, amount, ownerAddress, { from: accounts[1] })
-        await decentralRentInstance.penalise_credit_score(2, 'renter', { from: accounts[1] });
+        await decentralRentInstance.penalty_log(2, 'renter', { from: accounts[1] });
         let resolveIssue3 = await decentralRentInstance.resolve_issue(2, { from: accounts[1] });
 
         let ownerBalanceAfter = await web3.eth.getBalance(ownerAddress);
@@ -780,6 +766,9 @@ contract('DecentralRent', function(accounts) {
             amount,
             'Car Owner did not receive correct eth amount'
         );
+
+        // finally end rent after resolving issue
+        await decentralRentInstance.confirm_car_returned(6, { from: carOwnerAddress2 });
 
         let renterCreditScoreAfter = await decentralRentInstance.get_renter_credit_score(renterAddress3);
         let ownerCreditScoreAfter = await decentralRentInstance.get_owner_credit_score(carOwnerAddress2);
@@ -796,9 +785,6 @@ contract('DecentralRent', function(accounts) {
             'Car Owner 2 credit score did not change as expected'
         );
 
-        // finally end rent after resolving issue
-        await decentralRentInstance.confirm_car_returned(6, { from: carOwnerAddress2 });
-
         truffleAssert.eventEmitted(resolveIssue3, 'IssueResolved');
         truffleAssert.eventEmitted(resolveIssue3, 'Notify_owner');
         truffleAssert.eventEmitted(resolveIssue3, 'Notify_renter');
@@ -810,6 +796,7 @@ contract('DecentralRent', function(accounts) {
     });
 
     it('24a. Test Renter 4 recall request 7', async() => {
+
         let platformFee_1 = await decentralRentInstance.get_platform_fee();
         let platformFee = platformFee_1.toNumber();
 
@@ -854,72 +841,6 @@ contract('DecentralRent', function(accounts) {
         truffleAssert.eventEmitted(decline1, 'Notify_owner');
 
     });
-
-
-
-
-    /* guidelines
-    anything payable, check balance afterwards to verify
-    any require statements, test for wrong case (make sure it fails)
-    */
-
-    /* flow 
-    -- extra stuff --
-    singpassVerify
-    singpassVerifyCar 
-
-    -- main flow start --
-    *done* register 2 x car owner  
-    Car Owner 1 -> register 2 x car
-    Car Owner 2 -> register 1 x car
-    list all 3 cars
-    update 1 x car info
-
-
-    register 2 x car renter
-    get owner rating -> would be 0
-    renter 1 submit rental request 1
-    renter 2 submit rental request 2
-    renter 2 submit rental request 3
-
-    (owner 1) approve rental request 1
-    (owner 2) approve rental request 2
-    (owner 2) approve rental request 3
-
-    get renter rating for request 3 -> would be 0
-    (owner 2) recall rental offer 3
-
-    (renter 1) accept rental offer 1
-    (renter 2) accept rental offer 2
-
-
-    rent 1 - renter 1 confirm car received
-    rent 2 - renter 2 confirm car received
-    rent 1 - owner 1 confirm car returned  deposit 
-
-    (owner 1) leave rating for renter 1
-    (renter 1) leave rating for owner 1
-
-    -- main flow end --
-    Situations:
-    - renter 1, owner 1, rent 1 -> all good
-    - renter 2, owner 2, rent 2 -> nv return car
-
-    -- issues --
-
-    owner 2 report issue with rent 2 -> nv return car
-    (we call renter 2, gets him to return)
-    rent 2 - owner 2 confirm car returned  deposit
-    support team resolves issue
-
-    owner 2 reopen issue -> car scratched
-    (support gets renter to pay owner separately)
-    support team resolves issue again, done
-
-    -- extra stuff --
-    owner 1 unlist car
-
-    */
 
 
 });

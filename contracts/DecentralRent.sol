@@ -1,10 +1,5 @@
 pragma solidity >= 0.5.0; 
 
-// try to optimise by using memory storage 
-// try to integrate learnings from lecture 9 
-// separate data storage and logic 
-// satellite functions 
-
 contract DecentralRent{
     address _owner = msg.sender;
     uint256 platformFee;
@@ -248,11 +243,6 @@ contract DecentralRent{
         _;
     }
 
-    // modifier offer_pending_1day(uint256 rentId) internal view returns (bool) {
-    //     //auto-depre for recall approval
-    //     return block.timestamp > offer_dates[rentId] + 1 days;
-    // }
-
     function singPassVerify(address person) private pure returns(bool) {
         // this function simulates the verification through SingPass. 
         // Returns true by default. assuming the person passes real-name identification and driving license check
@@ -352,7 +342,6 @@ contract DecentralRent{
         cancellation_dates[rentId] = block.timestamp;
         carList[rentList[rentId].carId].cancelledRentIdList.push(rentId);
         emit RentalRequestRejected(rentId);
-        // delete rentList[rentId];
     }
 
     function unlist_car(uint256 carId) public carOwnerOnly(msg.sender, carId) carInStatus(carId, CarStatus.Available) {
@@ -430,7 +419,8 @@ contract DecentralRent{
         carList[rentList[rentId].carId].rentHistory.push(rentId);
 
         // remove car from the renter's current car list
-        /*
+        // commented out due to high gas fee involved.
+        /* 
         uint256 currentCarIndex;
         //uint256 currentCarCount = renterList[rentList[rentId].renter].currentCars.length;
         for (uint i=0; i<renterList[rentList[rentId].renter].currentCars.length; i++) {
@@ -494,15 +484,7 @@ contract DecentralRent{
 
     // if renter wants to offer a different price from listing
     function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) carInStatus(carId, CarStatus.Available) returns (uint256) {
-        /**
-        car renters can submit multiple rental requests
-
-        rental request must have a way of expiring -> should include the start and end date of
-        car rental, after rental offer accepted, only other requests with overlapping dates should expire
-
-        this logic can be handled in decentralrent smart contract, rental requests can be modelled as a struct
-        */
-        
+        require(carList[carId].carStatus == CarStatus.Available || carList[carId].carStatus == CarStatus.Received, "The status of this car is not allowed for this option.");
         uint256 newrentId = ++rentIdCount;
         // currentRenter.rentalRequests.push(newrentId);
 
@@ -549,8 +531,7 @@ contract DecentralRent{
     
 
         // WE TAKE RENTAL PRICE + DEPOSIT FROM RENTER NOW
-        // NEED FIND A WAY TO CALCULATE TOTAL HOURS ELAPSED
-        // uint256 hoursElapsed = 3; //hardcoded first
+        // uint256 hoursElapsed = 3; 
         uint256 hoursElapsed = (rentList[rentId].endDate - rentList[rentId].startDate) / (60 * 60); 
         uint256 ethToPay = rentList[rentId].hourlyRentalRate * hoursElapsed + rentList[rentId].deposit;
         require(msg.value >= ethToPay, "Please transfer enough Eth to pay for rental");
@@ -684,31 +665,18 @@ contract DecentralRent{
         recipient.transfer(amount);
     }
 
-    function penalise_credit_score(uint256 issueId, string memory person) public supportTeamOnly(msg.sender) {
+    function penalty_log(uint256 issueId, string memory person) public supportTeamOnly(msg.sender) {
         require(issueList[issueId].issueStatus == IssueStatus.Solving || issueList[issueId].issueStatus == IssueStatus.Created, "The status of this issue is not allowed for this option.");
         issueList[issueId].issueStatus = IssueStatus.Solving;
 
         uint256 rentId = issueList[issueId].rentId;
         // update users' credit score 
-        address owneradd = rentList[rentId].carOwner;
         if (keccak256(abi.encodePacked(person)) == keccak256(abi.encodePacked('owner'))) {
             rentList[rentId].penaliseOwner = true;
         }
-        // if(!rentList[rentId].penaliseOwner) {
-        //     carOwnerInfo[owneradd].completedRentCount ++;
-        // }
-        // carOwnerInfo[owneradd].totalRentCount ++;
-        // carOwnerInfo[owneradd].creditScore = carOwnerInfo[owneradd].completedRentCount*100/carOwnerInfo[owneradd].totalRentCount; 
-        
-        address renteradd = rentList[rentId].renter;
         if (keccak256(abi.encodePacked(person)) == keccak256(abi.encodePacked('renter'))) {
             rentList[rentId].penaliseRenter = true;
         }
-        // if(!rentList[rentId].penaliseRenter) {
-        //     renterList[renteradd].completedRentCount ++;
-        // } 
-        // renterList[renteradd].totalRentCount ++;
-        // renterList[renteradd].creditScore = renterList[renteradd].completedRentCount*100/renterList[renteradd].totalRentCount; //maximum 100 marks
     }
 
     function update_rental_status(uint256 issueId, string memory rentalStatusString, string memory carStatusString) public supportTeamOnly(msg.sender) {
@@ -806,7 +774,6 @@ contract DecentralRent{
 
     function reopen_issue(uint256 issueId, string memory updatedDetails) public {
         require(reopen_within_7day(issueId) == true, "you can only reopen an issue within 7 days after it is resolved");
-        // could be renter or owner?
         uint256 rentId = issueList[issueId].rentId;
         rent memory currentRent = rentList[rentId];
         address car_owner = currentRent.carOwner;
@@ -823,7 +790,7 @@ contract DecentralRent{
         emit Notify_renter(currentRent.renter); 
     }
 
-// DecentralRent Functions 
+// DecentralRent Contract Owner Functions 
     function update_platform_fee_and_commission_percentage(uint256 fee, uint256 commission_percentage) public decentralRentOwnerOnly(msg.sender) {
         // only owner of decentralRent can call this function 
         platformFee = fee;
@@ -836,75 +803,7 @@ contract DecentralRent{
         recipient.transfer(amount);
     }
 
-    // getters for frontend
-    /*
-    function view_all_cars() public view returns (car[] memory) {
-        require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
-        car[] memory allCars;
-        for (uint i=1; i <= carIdCount; i++) {
-            allCars[i] = carList[i];
-        }
-        return allCars;
-
-    }
-
-    function view_my_cars() public view verifiedOwnerOnly(msg.sender) returns (uint256[] memory)  {
-        car[] memory myCars;
-        for (uint i=0; i<carOwnerInfo[msg.sender].carList.length; i++) {
-            uint256 id = carOwnerInfo[msg.sender].carList[i];
-            myCars[i] = carList[id];
-        }
-        return myCars;
-    }
-
-    function view_car_info(uint256 carId) public view returns (car memory) {
-        car memory thisCar;
-        thisCar = carList[carId];
-        return thisCar;
-    }
-
-    function get_my_rental_requests() public view returns (rent[] memory) {
-        require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
-        rent[] memory myRentList;
-        if (renterList[msg.sender].verified) {
-            for (uint i=0; i<renterList[msg.sender].rentalRequests.length; i++) {
-                myRentList[i] = rentList[renterList[msg.sender].rentalRequests[i]];
-            }
-        } else if (carOwnerInfo[msg.sender].verified) {
-            for (uint i=0; i<carOwnerInfo[msg.sender].rentalRequests.length; i++) {
-                myRentList[i] = rentList[carOwnerInfo[msg.sender].rentalRequests[i]];
-            }
-        }
-        return myRentList;
-    }
-
-    function get_car_rental_requests(uint256 carId) public view verifiedOwnerOnly(msg.sender) returns (rent[] memory) {
-        // get my rental requests for a car
-        // for car owner use only
-        rent[] memory myRentList;
-        for (uint i=0; i<carList[carId].requestedrentIdList.length; i++) {
-            myRentList[i] = rentList[carList[carId].requestedrentIdList[i]];
-        }
-        return myRentList;
-    }
-
-    function get_a_rental_request_details(uint256 rentId) public view returns (rent memory) {
-        require(msg.sender == rentList[rentId].renter || msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
-        
-        return rentList[rentId];
-    }
-
-    function get_current_cars(address person) public view returns (car[] memory) {
-        // get a renter's current cars
-        require(renterList[person].verified, "This account is not a renter account.");
-        car[] memory currCars;
-        for (uint i=0; i<renterList[person].currentCars.length; i++) {
-            currCars[i] = carList[renterList[person].currentCars[i]];
-        }
-        return currCars;
-    } */
-
-    // getters for smart contract
+// getters for smart contract
     function get_current_time()public view returns (uint256) {
         return block.timestamp;
     }
@@ -1029,9 +928,9 @@ contract DecentralRent{
     }
 
     function get_total_rent_price(uint256 rentId) public view returns(uint256) {
-        rent memory rentInstance = rentList[rentId];
-        uint256 hoursElapsed = (rentInstance.endDate - rentInstance.startDate) / (60 * 60); 
-        return rentInstance.hourlyRentalRate * hoursElapsed;
+        // rent memory rentInstance = rentList[rentId];
+        uint256 hoursElapsed = (rentList[rentId].endDate - rentList[rentId].startDate) / (60 * 60); 
+        return rentList[rentId].hourlyRentalRate * hoursElapsed;
     }
 
     function get_rent_carId(uint256 rentId) public view returns(uint256) {
@@ -1088,7 +987,76 @@ contract DecentralRent{
         return commissionPercent;
     }
 
-    /* function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
+    // theoreticle getters for frontend
+    // Commented out as it is for front-end integration, which will be our future implementation. 
+    /*
+    function view_all_cars() public view returns (car[] memory) {
+        require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
+        car[] memory allCars;
+        for (uint i=1; i <= carIdCount; i++) {
+            allCars[i] = carList[i];
+        }
+        return allCars;
+
+    }
+
+    function view_my_cars() public view verifiedOwnerOnly(msg.sender) returns (uint256[] memory)  {
+        car[] memory myCars;
+        for (uint i=0; i<carOwnerInfo[msg.sender].carList.length; i++) {
+            uint256 id = carOwnerInfo[msg.sender].carList[i];
+            myCars[i] = carList[id];
+        }
+        return myCars;
+    }
+
+    function view_car_info(uint256 carId) public view returns (car memory) {
+        car memory thisCar;
+        thisCar = carList[carId];
+        return thisCar;
+    }
+
+    function get_my_rental_requests() public view returns (rent[] memory) {
+        require(renterList[msg.sender].verified || carOwnerInfo[msg.sender].verified, "You do not have an account yet.");
+        rent[] memory myRentList;
+        if (renterList[msg.sender].verified) {
+            for (uint i=0; i<renterList[msg.sender].rentalRequests.length; i++) {
+                myRentList[i] = rentList[renterList[msg.sender].rentalRequests[i]];
+            }
+        } else if (carOwnerInfo[msg.sender].verified) {
+            for (uint i=0; i<carOwnerInfo[msg.sender].rentalRequests.length; i++) {
+                myRentList[i] = rentList[carOwnerInfo[msg.sender].rentalRequests[i]];
+            }
+        }
+        return myRentList;
+    }
+
+    function get_car_rental_requests(uint256 carId) public view verifiedOwnerOnly(msg.sender) returns (rent[] memory) {
+        // get my rental requests for a car
+        // for car owner use only
+        rent[] memory myRentList;
+        for (uint i=0; i<carList[carId].requestedrentIdList.length; i++) {
+            myRentList[i] = rentList[carList[carId].requestedrentIdList[i]];
+        }
+        return myRentList;
+    }
+
+    function get_a_rental_request_details(uint256 rentId) public view returns (rent memory) {
+        require(msg.sender == rentList[rentId].renter || msg.sender == rentList[rentId].carOwner, "You are not involved in this rental.");
+        
+        return rentList[rentId];
+    }
+
+    function get_current_cars(address person) public view returns (car[] memory) {
+        // get a renter's current cars
+        require(renterList[person].verified, "This account is not a renter account.");
+        car[] memory currCars;
+        for (uint i=0; i<renterList[person].currentCars.length; i++) {
+            currCars[i] = carList[renterList[person].currentCars[i]];
+        }
+        return currCars;
+    } 
+
+    function view_unsolved_issue() public view supportTeamOnly(msg.sender) returns(issue[] memory) {
         // only support team can call this function
         issue[] memory unsolvedIssues;
         for (uint i=0; i<issueIDCount; i++) {
