@@ -7,8 +7,11 @@ Our contract is too large to be run in the GUI version of Ganache, so the CLI ve
 <br/>
 `ganache --chain.allowUnlimitedContractSize` -> to run Ganache
 
-### Running tests
+### Running Tests
 `truffle test` from the root directory
+
+### Failing Tests
+If the test suite is failing, ganache can be run with another command instead: `ganache --chain.allowUnlimitedContractSize --chain.vmErrorsOnRPCResponse`
 
 ## Test Files
 
