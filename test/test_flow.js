@@ -10,7 +10,6 @@ const DecentralRent = artifacts.require("../contracts/DecentralRent.sol");
 
 
 contract('DecentralRentFlows', function(accounts) {
-    let contractOwnerAddress = accounts[0];
     let carOwnerAddress1 = accounts[2];
     let renterAddress1 = accounts[3];
     let renterAddress2 = accounts[4];
@@ -110,7 +109,7 @@ contract('DecentralRentFlows', function(accounts) {
 
 
         // Renter 1 updated his request
-        let newOfferedRate = 20;
+        let newOfferedRate = 22;
         let updatedCarRentalRequest = await decentralRentInstance.update_rental_request(1, startDate, endDate, newOfferedRate, { from: renterAddress1 });
         truffleAssert.eventEmitted(updatedCarRentalRequest, "RentRequestUpdated");
         console.log("RentRequest1 updated by renter1.");
