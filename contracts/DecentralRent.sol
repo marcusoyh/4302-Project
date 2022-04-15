@@ -483,7 +483,7 @@ contract DecentralRent{
 
 
     // if renter wants to offer a different price from listing
-    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) carInStatus(carId, CarStatus.Available) returns (uint256) {
+    function submit_rental_request_with_offer(uint256 carId, uint256 startDate,uint256 endDate, uint256 offeredRate) public registeredCarRenterOnly(msg.sender) returns (uint256) {
         require(carList[carId].carStatus == CarStatus.Available || carList[carId].carStatus == CarStatus.Received, "The status of this car is not allowed for this option.");
         uint256 newrentId = ++rentIdCount;
         // currentRenter.rentalRequests.push(newrentId);
